@@ -356,7 +356,7 @@ export default function Workspace(){
     <a className="project-promo keyderby-promo" href="https://keyderby.emon721.workers.dev" target="_blank" rel="noreferrer"><img src="https://keyderby.emon721.workers.dev/favicon.svg" alt="Key Derby logo"/><span><strong>Key Derby</strong><small>Improve typing speed, accuracy, and consistency with structured practice, timed typing races, and focused skill-building sessions.</small><em>Explore platform <ArrowRight size={13}/></em></span></a>
     <a className="project-promo campus-promo" href="https://campus-to-country.vercel.app" target="_blank" rel="noreferrer"><img src="https://raw.githubusercontent.com/emonhossain24/campus-to-country/main/public/campus-to-country-logo.png" alt="Campus to Country logo"/><span><strong>Campus to Country</strong><small>Explore universities, organise your study-abroad and visa application journey, and keep important plans and application details together in one personal workspace.</small><em>Explore platform <ArrowRight size={13}/></em></span></a>
    </div>
-  </section>
+  </section>}
   {isHome&&<div className="ai-disclaimer-banner" data-cms-skip><Shield size={18}/><span><strong>AI assessment notice:</strong> All scores, transcripts and corrections are practice estimates and may contain errors. Speak Station is not an official IELTS examiner. Check your actual level with an official IELTS test.</span></div>}
   {isHome&&<section id="home" className="home-section">
    {header(name?content.brand.greeting.replace('{name}',name):content.brand.guestGreeting,"Your practice, exams and progress. One home for everything.",<span className="date-label"><Clock size={15}/>{new Date().toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',timeZone:'Asia/Dhaka'})}</span>)}
