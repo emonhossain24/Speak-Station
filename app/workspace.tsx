@@ -349,7 +349,7 @@ export default function Workspace(){
   {notice&&<div className="banner amber"><CircleHelp size={17}/>{notice}<button onClick={refresh}>Retry</button></div>}
   {loading&&<div className="loading-bar"/>}
   {isHome&&<section className="project-promos-section" aria-label="Explore other platforms" data-cms-skip>
-   <div className="project-promos-heading"><span className="eyebrow">MORE FROM MY PROJECTS</span><h2>Explore more platforms</h2></div>
+   <div className="project-promos-heading"><h2>Explore more platforms</h2></div>
    <div className="project-promos">
     <a className="project-promo vocab-promo" href="https://vocab-station.emon721.workers.dev/" target="_blank" rel="noreferrer"><img src="https://vocab-station.emon721.workers.dev/logo.svg" alt="Vocab Station logo"/><span><strong>Vocab Station</strong><small>Build English vocabulary with Bengali meanings, example sentences, daily learning, weekly tests, and revision practice.</small><em>Explore platform <ArrowRight size={13}/></em></span></a>
     <a className="project-promo visa-promo" href="https://visafund.emon721.workers.dev" target="_blank" rel="noreferrer"><img src="https://visafund.emon721.workers.dev/favicon.svg" alt="VisaFund logo"/><span><strong>VisaFund</strong><small>Estimate study-abroad expenses, organise your financial plan, and track savings to prepare for visa-related funding requirements.</small><em>Explore platform <ArrowRight size={13}/></em></span></a>
