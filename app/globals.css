@@ -709,3 +709,21 @@ body{background:#111214;color:#F2F3F5}
 .auth-email-submit{background:#dbe7fb;color:#172334;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer}
 .auth-email-submit:disabled{opacity:.6;cursor:wait}
 .auth-gate-card{max-height:none}
+
+
+/* Separate, prominent cross-project promotion row above the Speak Station homepage. */
+.project-promos-section{width:min(100%,1240px);margin:18px auto 24px;padding:18px 20px;background:var(--panel);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow)}
+.project-promos-heading{display:flex;align-items:baseline;gap:12px;margin:0 0 13px}
+.project-promos-heading .eyebrow{font-size:10px;letter-spacing:1.25px;font-weight:700;color:var(--muted)}
+.project-promos-heading h2{font-size:17px;letter-spacing:-.35px}
+.project-promos{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;width:100%;min-width:0}
+.project-promo{display:flex;align-items:flex-start;gap:10px;min-width:0;padding:13px 11px;border:1px solid var(--border);border-radius:11px;background:var(--bg);text-decoration:none;transition:border-color .16s,transform .16s,box-shadow .16s}
+.project-promo:hover{border-color:var(--primary);transform:translateY(-2px);box-shadow:0 7px 20px #00000012}
+.project-promo>img{width:42px;height:42px;min-width:42px;max-width:42px;min-height:42px;max-height:42px;object-fit:contain;flex:0 0 42px;border-radius:10px}
+.project-promo>span{display:flex;flex-direction:column;min-width:0;gap:5px}
+.project-promo strong{font-size:13px;font-weight:700;color:var(--text)}
+.project-promo small{font-size:11px;line-height:1.5;color:var(--muted);overflow-wrap:anywhere}
+.project-promo em{display:inline-flex;align-items:center;gap:5px;margin-top:2px;font-style:normal;font-size:10px;font-weight:650;color:var(--primary)}
+.project-promo .visa-promo>img{background:#102c40}
+@media(max-width:1050px){.project-promos{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.project-promos-section{margin:14px 0 20px;padding:14px 12px;border-radius:12px}.project-promos-heading{align-items:flex-start;flex-direction:column;gap:4px}.project-promos{grid-template-columns:repeat(4,minmax(190px,1fr));overflow-x:auto;overflow-y:hidden;padding-bottom:5px;scroll-snap-type:x proximity}.project-promo{scroll-snap-align:start;padding:12px 10px}}
