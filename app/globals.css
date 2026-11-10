@@ -712,8 +712,8 @@ body{background:#111214;color:#F2F3F5}
 
 
 /* Separate, prominent cross-project promotion row above the Speak Station homepage. */
-.project-promos-section{width:min(100%,1240px);margin:18px auto 24px;padding:18px 20px;background:var(--panel);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow)}
-.project-promos-heading{display:flex;align-items:baseline;gap:12px;margin:0 0 13px}
+.project-promos-section{width:min(100%,1240px);margin:6px auto 14px;padding:12px 20px;background:var(--panel);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow)}
+.project-promos-heading{display:flex;align-items:baseline;gap:12px;margin:0 0 8px}
 .project-promos-heading .eyebrow{font-size:10px;letter-spacing:1.25px;font-weight:700;color:var(--muted)}
 .project-promos-heading h2{font-size:17px;letter-spacing:-.35px}
 .project-promos{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;width:100%;min-width:0}
