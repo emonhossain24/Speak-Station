@@ -154,14 +154,14 @@ async function handler(req:Request){
   const check=eligibility(category,[...history.sessions,...history.legacy],history.modules);
   if(!check.allowed)return response({error:check.reason,nextAt:check.nextAt,modulesCompleted:check.modulesCompleted},429);
   const sessionId=crypto.randomUUID(),expiresAt=new Date(Date.now()+86400000).toISOString();
-  const cutoff6=new Date(Date.now()-PRACTICE_INTERVAL_MS).toISOString();
+  const cutoff4=new Date(Date.now()-PRACTICE_INTERVAL_MS).toISOString();
   const cutoff24=new Date(Date.now()-PRACTICE_DAY_MS).toISOString();
   const cutoff7=new Date(Date.now()-TEST_INTERVAL_MS).toISOString();
   // Atomic D1 admission: two simultaneous tabs cannot both consume the same slot.
   const sql=category==='practice'?
-   "INSERT INTO study_sessions(id,user_id,category,kind,day,mode,started_at,expires_at) SELECT ?,?,?,?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM study_sessions WHERE user_id=? AND category='practice' AND started_at>?) AND (SELECT COUNT(*) FROM study_sessions WHERE user_id=? AND category='practice' AND started_at>?)<3":
+   "INSERT INTO study_sessions(id,user_id,category,kind,day,mode,started_at,expires_at) SELECT ?,?,?,?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM study_sessions WHERE user_id=? AND category='practice' AND started_at>?) AND (SELECT COUNT(*) FROM study_sessions WHERE user_id=? AND category='practice' AND started_at>?)<5":
    "INSERT INTO study_sessions(id,user_id,category,kind,day,mode,started_at,expires_at) SELECT ?,?,?,?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM study_sessions WHERE user_id=? AND category='test' AND started_at>?)";
-  const values=category==='practice'?[sessionId,uid,category,kind,day,mode,timestamp,expiresAt,uid,cutoff6,uid,cutoff24]:
+  const values=category==='practice'?[sessionId,uid,category,kind,day,mode,timestamp,expiresAt,uid,cutoff4,uid,cutoff24]:
    [sessionId,uid,category,kind,day,mode,timestamp,expiresAt,uid,cutoff7];
   const admission=await execute(sql,...values);
   if(!admission.meta.changes)return response({error:'Another session just used this time slot. Refresh to see the next available time.',scheduling:await studyQuota(uid)},429);
