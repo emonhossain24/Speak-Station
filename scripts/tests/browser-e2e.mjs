@@ -116,7 +116,7 @@ try{
  await verify('240 complete books and weekly/revision controls',async()=>{
   await page.getByText('Explore 240 complete test books').first().waitFor();
   assert(await page.locator('#books .book-tile').count()>=1);
-  assert(await page.locator('#exams .sample-mock-preview').count()===1);
+  assert(await page.locator('#exams .sample-mock-preview').count()===0,'sample mock preview must stay removed from learner workspace');
   const weekly=page.locator('#exams .exam-set').first();
   assert(await weekly.count());
   assert(!(await weekly.getByRole('button',{name:/Start exam/}).isDisabled()));
