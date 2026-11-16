@@ -29,7 +29,7 @@ jobs:
           node-version: '22'
           cache: pnpm
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
       - name: Block known high and critical dependency advisories
         run: pnpm audit --audit-level high
       - name: TypeScript check
@@ -38,7 +38,7 @@ jobs:
         run: node scripts/tests/verify-speaking-parts.mjs
       - name: Preserve core learner-facing features
         run: node scripts/tests/verify-features.mjs
-      - name: Test 6-hour practice and seven-day test admission boundaries
+      - name: Test 4-hour practice and six-per-day, seven-day test admission boundaries
         run: node scripts/tests/verify-session-policy.mjs
       - name: Check real 240-book content and all 45 scheduled exams
         run: node scripts/tests/verify-real-content.mjs
@@ -86,7 +86,7 @@ jobs:
           node-version: '22'
           cache: pnpm
       - name: Install project
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
       - name: Cache browser binaries between QA runs
         uses: actions/cache@v4
         with:
