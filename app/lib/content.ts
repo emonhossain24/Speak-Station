@@ -14,8 +14,16 @@ export const contentSchema=z.object({
 export type SiteContent=z.infer<typeof contentSchema>;
 export async function readContent(db:D1Database){const r=await db.prepare("SELECT value FROM settings WHERE key='site_content'").bind().all();const row:any=r.results?.[0];if(!row)return defaultContent as SiteContent;try{const content=contentSchema.parse({...defaultContent,...JSON.parse(row.value)});
 // Hide only the exact owner-authored Sample Mock review/evaluation guide.
-const removedGuide=content.customSections.find(s=>s.title.trim().replace(/\s+/g,' ').toUpperCase()==='SAMPLE MOCK · REVIEW & EVALUATION GUIDE');
-if(removedGuide){content.customSections=content.customSections.filter(s=>s.id!==removedGuide.id);content.navigation=content.navigation.filter(n=>n.target!==removedGuide.id);content.sectionOrder=content.sectionOrder.filter(id=>id!==removedGuide.id);}
+const isReviewGuide=(section:SiteContent['customSections'][number])=>{
+ const title=section.title.replace(/[*_`#]/g,'').trim().replace(/\s+/g,' ').toUpperCase();
+ const body=section.body.replace(/\s+/g,' ').toLowerCase();
+ return title==='SAMPLE MOCK · REVIEW & EVALUATION GUIDE'
+  || (body.includes('this is a review-only model of a full mock.')
+   && body.includes('example evaluation:')
+   && body.includes('review-only sample · no recording'));
+};
+const removedGuideIds=new Set(content.customSections.filter(isReviewGuide).map(s=>s.id));
+if(removedGuideIds.size){content.customSections=content.customSections.filter(s=>!removedGuideIds.has(s.id));content.navigation=content.navigation.filter(n=>!removedGuideIds.has(n.target));content.sectionOrder=content.sectionOrder.filter(id=>!removedGuideIds.has(id));}
 // Upgrade the built-in legacy palettes without replacing an owner's custom theme or type sizes.
 // Harmonize previously shipped copper, brown, navy and saturated legacy palettes.
 const legacyAccents=['#e9b477','#8298ef','#609a7a','#3265c7','#dc9867','#ce8558','#b388ff','#376fc9'];
