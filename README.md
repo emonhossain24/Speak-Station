@@ -26,7 +26,6 @@ Learners can **continue with Google** or **create an email account** using their
 | Test admission | One test start every **7 days** (weekly, revision or exam-mode book), only after **2 distinct modules completed within the last 7 days** |
 | Weekly exams | **30 sequential weekly tests** with a minimum pass band of **6.0/9** |
 | Revision checkpoints | **15 revision exams**; a revision is required after every two passed weekly tests |
-| Sample mock | A **preview-only** example of speaking parts and expected timings, without starting an exam |
 | AI assessment | One complete assessment **per speaking part**, with question-by-question feedback |
 | Personal progress | Part 1, Part 2, Part 3 and combined overall estimated band for completed sessions |
 | Member number | Permanent join-order number beside the learner's profile name (for example, #1, #2) |
@@ -94,16 +93,6 @@ Weekly tests follow a **locked progression** rather than a freely selectable exa
 - A result below the pass mark can be recorded for progress, but it does **not** unlock the next exam.
 
 Weekly and revision exams include Parts 1, 2 and 3. They are distinct from the regular practice-book collection. Daily practice follows its own learning-track milestones.
-
-## Sample mock: format preview
-
-The **Sample Mock** section introduces the type of questions and approximate structure of a more demanding full mock:
-
-- Part 1: personal interview, approximately **4–5 minutes**.
-- Part 2: preparation and extended response, approximately **3–4 minutes**, including one-minute preparation.
-- Part 3: deeper discussion, approximately **4–5 minutes**.
-
-This is **preview-only**. It does not record audio, run assessment, award a score or count as an exam attempt.
 
 ## Restored Progress Dashboard and achievements
 
