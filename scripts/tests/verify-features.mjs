@@ -35,7 +35,7 @@ assert(api.includes('compactIssueCounts('),'server must derive safe error-catego
 console.log('PASS: Protected dashboard, achievements, profile, guidelines and detailed feedback preserved');
 
 const policy=fs.readFileSync('app/lib/session-policy.ts','utf8');
-assert(policy.includes('PRACTICE_INTERVAL_MS=6*60*60*1000'));
+assert(policy.includes('PRACTICE_INTERVAL_MS=4*60*60*1000'));
 assert(policy.includes('TEST_INTERVAL_MS=7*24*60*60*1000'));
 assert(ui.includes("api('begin-session'"),'session start must be admitted by D1');
 assert(api.includes('requireStudySession('),'AI assessment and score submission must verify the server-issued session');
@@ -45,8 +45,8 @@ assert(ui.includes('member-number'),'profile name retains joining number');
 assert(ui.includes('data.user.memberNumber'),'user number appears in profile');
 assert(api.includes('INSERT OR IGNORE INTO member_numbers'),'member number assigned only once');
 assert(api.includes('member_number FROM member_numbers WHERE user_id=?'),'member number lookup is user-scoped');
-assert(api.includes("started_at>?)<3"),'D1 enforces three practices in a rolling day');
-console.log('PASS: numbered private profiles and server-side three-practice limit');
+assert(api.includes("started_at>?)<5"),'D1 enforces three practices in a rolling day');
+console.log('PASS: numbered private profiles and server-side five-practice limit');
 
 // Admin visibility is also a security boundary: a regular learner must not
 // enter the editor through UI navigation, modal state, or any admin API.
