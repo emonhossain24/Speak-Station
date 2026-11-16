@@ -13,18 +13,32 @@ export const contentSchema=z.object({
 }).superRefine((c,ctx)=>{for(const list of [c.navigation,c.exams,c.lessons,c.customSections,c.statCards,c.milestones,c.featureCards])if(new Set(list.map(v=>v.id)).size!==list.length)ctx.addIssue({code:z.ZodIssueCode.custom,message:'Each collection needs unique IDs.'});if(new Set(c.topics.map(t=>t.toLowerCase())).size!==c.topics.length)ctx.addIssue({code:z.ZodIssueCode.custom,message:'Topics must be unique.'});for(const pair of [['day','Exams need a unique type and day.'],['number','Exams need a unique number per type.']])if(new Set(c.exams.map(e=>e.kind+':'+(e as any)[pair[0]])).size!==c.exams.length)ctx.addIssue({code:z.ZodIssueCode.custom,message:pair[1]});if(new Set(c.sectionOrder).size!==c.sectionOrder.length)ctx.addIssue({code:z.ZodIssueCode.custom,message:'Section order contains duplicate entries.'});const targets=new Set(['home','practice','topics','books','exams','revision','academy','progress','attempts','contact',...c.customSections.map(s=>s.id)]);for(const n of [...c.navigation,...c.customSections])if(!targets.has(n.target))ctx.addIssue({code:z.ZodIssueCode.custom,message:'Navigation targets must identify an existing page section.'});for(const s of c.customSections)if(['home','practice','topics','books','exams','revision','academy','progress','attempts','contact'].includes(s.id))ctx.addIssue({code:z.ZodIssueCode.custom,message:'Choose a new custom section ID.'});});
 export type SiteContent=z.infer<typeof contentSchema>;
 export async function readContent(db:D1Database){const r=await db.prepare("SELECT value FROM settings WHERE key='site_content'").bind().all();const row:any=r.results?.[0];if(!row)return defaultContent as SiteContent;try{const content=contentSchema.parse({...defaultContent,...JSON.parse(row.value)});
-// Hide only the exact owner-authored Sample Mock review/evaluation guide.
-type CustomSection = SiteContent['customSections'][number];
-const isReviewGuide = (section: CustomSection) => {
- const title = section.title.replace(/[*_#]/g, '').replace(/\x60/g, '').trim().replace(/\s+/g, ' ').toUpperCase();
- const body=section.body.replace(/\s+/g,' ').toLowerCase();
- return title==='SAMPLE MOCK · REVIEW & EVALUATION GUIDE'
-  || (body.includes('this is a review-only model of a full mock.')
+// Remove the owner-authored IELTS Sample Mock review/evaluation guide from public content.
+const normalizeGuideText = (value: string) => value
+ .replace(/&#x([0-9a-f]+);/gi, (_match, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
+ .replace(/&#(\d+);/g, (_match, dec: string) => String.fromCodePoint(Number(dec)))
+ .replace(/&middot;/gi, '·')
+ .replace(/<[^>]*>/g, ' ')
+ .replace(/[\u200b\u00a0]/g, ' ')
+ .replace(/[\*_\x60#]/g, '')
+ .replace(/\s+/g, ' ')
+ .trim()
+ .toLowerCase();
+const isSampleReviewGuide = (section: CustomSection) => {
+ const title = normalizeGuideText(section.title);
+ const body = normalizeGuideText(section.body);
+ return title.includes('sample mock') && title.includes('review') && title.includes('evaluation')
+  || (body.includes('ielts speaking') && body.includes('higher-difficulty sample mock')
+   && body.includes('no attempt or score is saved')
    && body.includes('example evaluation:')
-   && body.includes('review-only sample · no recording'));
+   && body.includes('review-only sample'));
 };
-const removedGuideIds=new Set(content.customSections.filter(isReviewGuide).map(s=>s.id));
-if(removedGuideIds.size){content.customSections=content.customSections.filter(s=>!removedGuideIds.has(s.id));content.navigation=content.navigation.filter(n=>!removedGuideIds.has(n.target));content.sectionOrder=content.sectionOrder.filter(id=>!removedGuideIds.has(id));}
+const removedGuideIds = new Set(content.customSections.filter(isSampleReviewGuide).map(section => section.id));
+if (removedGuideIds.size) {
+ content.customSections = content.customSections.filter(section => !removedGuideIds.has(section.id));
+ content.navigation = content.navigation.filter(item => !removedGuideIds.has(item.target));
+ content.sectionOrder = content.sectionOrder.filter(id => !removedGuideIds.has(id));
+}
 // Upgrade the built-in legacy palettes without replacing an owner's custom theme or type sizes.
 // Harmonize previously shipped copper, brown, navy and saturated legacy palettes.
 const legacyAccents=['#e9b477','#8298ef','#609a7a','#3265c7','#dc9867','#ce8558','#b388ff','#376fc9'];
