@@ -24,7 +24,7 @@ const normalizeGuideText = (value: string) => value
  .replace(/\s+/g, ' ')
  .trim()
  .toLowerCase();
-const isSampleReviewGuide = (section: CustomSection) => {
+const isSampleReviewGuide = (section: SiteContent['customSections'][number]) => {
  const title = normalizeGuideText(section.title);
  const body = normalizeGuideText(section.body);
  return title.includes('sample mock') && title.includes('review') && title.includes('evaluation')
