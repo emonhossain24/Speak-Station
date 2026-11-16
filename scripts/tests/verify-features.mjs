@@ -45,8 +45,8 @@ assert(ui.includes('member-number'),'profile name retains joining number');
 assert(ui.includes('data.user.memberNumber'),'user number appears in profile');
 assert(api.includes('INSERT OR IGNORE INTO member_numbers'),'member number assigned only once');
 assert(api.includes('member_number FROM member_numbers WHERE user_id=?'),'member number lookup is user-scoped');
-assert(api.includes("started_at>?)<5"),'D1 enforces three practices in a rolling day');
-console.log('PASS: numbered private profiles and server-side five-practice limit');
+assert(api.includes("started_at>?)<6"),'D1 enforces six practices in a rolling 24 hours');
+console.log('PASS: numbered private profiles and server-side six-practice limit');
 
 // Admin visibility is also a security boundary: a regular learner must not
 // enter the editor through UI navigation, modal state, or any admin API.
