@@ -11,7 +11,7 @@ assert.equal(MAX_PRACTICES_PER_24H,6);
 assert(p([],0).allowed);
 assert(!p(records([0]),PRACTICE_INTERVAL_MS-1000).allowed,'three hours 59m 59s must be locked');
 assert(p(records([0]),PRACTICE_INTERVAL_MS).allowed,'exact four hours opens one practice');
-assert(p(records([0,6].map(h=>h*3600000)),12*3600000).allowed,'third practice starts at four-hour boundary');
+assert(p(records([0,4].map(h=>h*3600000)),8*3600000).allowed,'third practice starts at four-hour boundary');
 assert(p(records([0,4,8].map(h=>h*3600000)),12*3600000).allowed,'fourth practice starts at four-hour boundary');
 assert(p(records([0,4,8,12].map(h=>h*3600000)),16*3600000).allowed,'fifth practice starts at four-hour boundary');
 assert(p(records([0,4,8,12,16].map(h=>h*3600000)),20*3600000).allowed,'sixth practice starts at four-hour boundary');
