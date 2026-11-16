@@ -156,11 +156,14 @@ try{
   assert(await page.locator('#practice .record-actions').count()===1);
   assert(await page.locator('#practice .question-navigation').count()===1);
  });
- await verify('Sample mock and fabricated sample assessment are fully removed',async()=>{
-  assert.equal(await page.getByRole('button',{name:/View a complete feedback example/i}).count(),0);
-  assert.equal(await page.getByText('Sample feedback',{exact:true}).count(),0);
-  assert.equal(await page.locator('#exams .sample-mock-preview').count(),0);
-  assert.equal(await page.locator('#practice .assessment-preview').count(),1,'real assessment instructions remain available');
+ await verify('Sample assessment exposes every detailed feedback tab',async()=>{
+  await page.getByRole('button',{name:/View a complete feedback example/}).click();
+  await page.locator('#feedback-report').waitFor();
+  for(const label of ['Full answer','Mistake map','Grammar & structure','Missing ideas','Vocabulary','Pronunciation & fluency','Next steps']){
+   await page.getByRole('tab',{name:new RegExp(label.replace('&','&'),'i')}).first().click();
+   assert(await page.locator('#feedback-report .assessment-body').count()===1);
+  }
+  await capture('detailed-feedback');
  });
 
  await verify('Complete Part 1 → Part 2 → Part 3 → final score with simulated microphone and AI',async()=>{
