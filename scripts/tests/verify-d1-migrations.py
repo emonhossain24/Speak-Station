@@ -11,11 +11,16 @@ for path in files:
 tables={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
 required={'attempts','audit','days','question_overrides','profiles','saved','tests','usage','settings','messages','user_access','question_cooldowns','study_sessions','member_numbers'}
 assert required.issubset(tables),f'Missing tables: {required-tables}'
+assert {'id','actor','action','detail','created_at'}.issubset(cols('audit')) if 'cols' in globals() else {'actor'}.issubset({r[1] for r in conn.execute('PRAGMA table_info("audit")')}), 'Audit schema must use actor, not user_id'
 cols=lambda table:{r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')}
 assert {'user_id','name','target','track','exam_date','phone','created_at'}.issubset(cols('profiles'))
 assert {'user_id','question_id','available_at'}.issubset(cols('question_cooldowns'))
 assert 'evaluating_at' in cols('attempts')
 user='qa-user'; now='2026-11-01T06:00:00.000Z'; expiry='2026-11-16T06:00:00.000Z'
+probe=str(uuid.uuid4())
+conn.execute('INSERT INTO audit (id,actor,action,detail,created_at) VALUES (?,?,?,?,?)',(probe,user,'qa.probe','Temporary diagnostic',now))
+conn.execute('DELETE FROM audit WHERE id=?',(probe,))
+assert conn.execute('SELECT count(*) FROM audit WHERE id=?',(probe,)).fetchone()[0]==0, 'D1 diagnostic insert and cleanup must succeed'
 conn.execute('INSERT INTO profiles(user_id,name,track,created_at) VALUES (?,?,?,?)',(user,'Tester',210,now))
 conn.execute('UPDATE profiles SET phone=?,target=? WHERE user_id=?',('0000000000','8.0',user))
 assert conn.execute('SELECT phone FROM profiles WHERE user_id=?',(user,)).fetchone()[0]=='0000000000'
