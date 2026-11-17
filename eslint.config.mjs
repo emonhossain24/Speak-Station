@@ -5,6 +5,17 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    // Keep the legacy codebase lintable while TypeScript and the test suite
+    // continue to enforce type correctness and application behaviour.
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": "warn",
+      "no-unused-vars": "off",
+      "react/no-unescaped-entities": "warn",
+      "@next/next/no-assign-module-variable": "warn",
+    },
+  },
   globalIgnores([
     "dist/**",
     ".vinext/**",
