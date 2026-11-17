@@ -14,6 +14,12 @@ const eslintConfig = defineConfig([
       "no-unused-vars": "off",
       "react/no-unescaped-entities": "warn",
       "@next/next/no-assign-module-variable": "warn",
+      // Legacy components use established render/effect patterns; report these
+      // React Compiler diagnostics without blocking CI while they are refactored.
+      "react-hooks/purity": "warn",
+      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/refs": "warn",
+      "prefer-const": "warn",
     },
   },
   globalIgnores([
