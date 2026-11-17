@@ -278,7 +278,7 @@ async function handler(req:Request){
     for(const item of answers)await execute('INSERT INTO question_cooldowns (user_id,question_id,available_at) VALUES (?,?,?) ON CONFLICT(user_id,question_id) DO UPDATE SET available_at=excluded.available_at',uid,item.question.id,availableAt);
    }
    return response({part:meta.part,feedback,receipts,assessmentCount:1,official:false});
-  }catch(error){return fail(assessmentFailureMessage(error),502)}
+  }catch(error){console.error('[Speak Station AI part assessment failed]',safeError(error));return fail(assessmentFailureMessage(error),502)}
  }
  if(path==='submit'&&req.method==='POST')return fail('Use a complete speaking session for Part-based AI assessment.',410);
  if(req.method==='POST'&&path==='message'){const b=z.object({subject:z.string().min(3).max(160),body:z.string().min(10).max(5000)}).parse(await req.json());if(/[\u0980-\u09ff]/.test(b.subject+b.body))return fail('Please write your message in English.');const recent=await rows('SELECT id FROM messages WHERE user_id=? AND created_at>?',uid,new Date(Date.now()-3600000).toISOString());if(recent.length>=5)return fail('You can send up to five support messages per hour.',429);await execute("INSERT INTO messages (id,user_id,subject,body,reply,status,created_at) VALUES (?,?,?,?,'','open',?)",crypto.randomUUID(),uid,b.subject,b.body,now());return response({ok:true});}

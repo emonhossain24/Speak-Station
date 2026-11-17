@@ -29,9 +29,11 @@ jobs:
           node-version: '22'
           cache: pnpm
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Block known high and critical dependency advisories
         run: pnpm audit --audit-level high
+      - name: ESLint
+        run: pnpm run lint
       - name: TypeScript check
         run: pnpm exec tsc --noEmit
       - name: Speaking-book and part-level assessment tests
@@ -86,7 +88,7 @@ jobs:
           node-version: '22'
           cache: pnpm
       - name: Install project
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Cache browser binaries between QA runs
         uses: actions/cache@v4
         with:
