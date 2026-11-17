@@ -11,7 +11,7 @@ for path in files:
 tables={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
 required={'attempts','audit','days','question_overrides','profiles','saved','tests','usage','settings','messages','user_access','question_cooldowns','study_sessions','member_numbers'}
 assert required.issubset(tables),f'Missing tables: {required-tables}'
-assert {'id','actor','action','detail','created_at'}.issubset(cols('audit')) if 'cols' in globals() else {'actor'}.issubset({r[1] for r in conn.execute('PRAGMA table_info("audit")')}), 'Audit schema must use actor, not user_id'
+assert {'id','actor','action','detail','created_at'}.issubset({r[1] for r in conn.execute('PRAGMA table_info("audit")')}), 'Audit schema must use actor, not user_id'
 cols=lambda table:{r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')}
 assert {'user_id','name','target','track','exam_date','phone','created_at'}.issubset(cols('profiles'))
 assert {'user_id','question_id','available_at'}.issubset(cols('question_cooldowns'))
