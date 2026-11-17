@@ -15,7 +15,7 @@ import {assessSpeakingPart,type PartAnswer} from '../../lib/part-assessment';
 import {transcribeAudio,validAudio,audioMime} from '../../lib/transcription';
 import {z} from 'zod';
 import {assessmentFailureMessage,ProviderFailure} from '../../lib/provider-errors';
-import {aiConfiguration,connectionStatus,encryptCredential,verifyGemini} from '../../lib/integration';
+import {aiConfiguration,connectionStatus,encryptCredential,verifyGemini,validateCredentialEncryptionKey} from '../../lib/integration';
 export const dynamic='force-dynamic';
 const E=()=>env as any;
 const receiptSecret=()=>String(E().PRACTICE_RECEIPT_SECRET||E().CREDENTIAL_ENCRYPTION_KEY||'');
@@ -176,9 +176,24 @@ async function handler(req:Request){
 
  if(path==='integration'&&req.method==='POST'){
   if(!admin)return fail('Only the site owner can connect an AI provider.',403);
-  if(!E().CREDENTIAL_ENCRYPTION_KEY)return fail('Secure credential storage is not configured.',503);
-  const body=z.object({key:z.string().min(20).max(300)}).parse(await req.json());
-  try{const model=await verifyGemini(body.key);const encrypted=await encryptCredential(body.key,E().CREDENTIAL_ENCRYPTION_KEY);const checkedAt=now();await execute("INSERT INTO settings (key,value) VALUES ('gemini_connection',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",JSON.stringify({encrypted,model,checkedAt}));await execute('INSERT INTO audit VALUES (?,?,?,?,?)',crypto.randomUUID(),uid,'integration.connected','Gemini connection verified; key stored encrypted',now());return response({ok:true,model,checkedAt});}catch(e){console.error('[Speak Station Gemini connection] ',safeError(e));return fail(assessmentFailureMessage(e),400);}
+  const encryptionKey=String(E().CREDENTIAL_ENCRYPTION_KEY||'');
+  if(!encryptionKey)return fail('Secure credential storage is not configured. Add the Cloudflare Worker Secret CREDENTIAL_ENCRYPTION_KEY (Base64-encoded 32 random bytes), then deploy again.',503);
+  try{validateCredentialEncryptionKey(encryptionKey);}catch(error){console.error('[Speak Station credential encryption configuration]',safeError(error));return fail(error instanceof Error?error.message:'CREDENTIAL_ENCRYPTION_KEY is invalid.',503);}
+  let body:{key:string};
+  try{body=z.object({key:z.string().trim().min(20).max(300)}).parse(await req.json());}
+  catch(error){if(error instanceof z.ZodError)return fail('The Gemini API key field is missing or invalid. Paste the complete Google AI Studio API key without quotes or extra spaces.',400);return fail('The request body must be valid JSON containing the key field.',400);}
+  let model:string;
+  try{model=await verifyGemini(body.key);}
+  catch(error){console.error('[Speak Station Gemini key verification]',safeError(error));return fail(error instanceof ProviderFailure?error.message:(error instanceof Error?error.message:'Gemini could not verify this API key. Check the key and Google AI Studio project.'),error instanceof ProviderFailure?error.httpStatus:400);}
+  let encrypted:string;
+  try{encrypted=await encryptCredential(body.key,encryptionKey);}
+  catch(error){console.error('[Speak Station Gemini encryption]',safeError(error));return fail('Gemini key was verified, but encryption failed. Check CREDENTIAL_ENCRYPTION_KEY: it must be Base64-encoded 32 random bytes.',503);}
+  const checkedAt=now();
+  try{await execute("INSERT INTO settings (key,value) VALUES ('gemini_connection',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",JSON.stringify({encrypted,model,checkedAt}));}
+  catch(error){console.error('[Speak Station Gemini D1 save]',safeError(error));return fail('Gemini key was verified and encrypted, but Cloudflare D1 could not save it. Check the production D1 binding and settings table migration.',503);}
+  try{await execute('INSERT INTO audit VALUES (?,?,?,?,?)',crypto.randomUUID(),uid,'integration.connected','Gemini connection verified; key stored encrypted',now());}
+  catch(error){console.error('[Speak Station Gemini audit write]',safeError(error));}
+  return response({ok:true,model,checkedAt});
  }
  if(path==='integration/test'&&req.method==='POST'){
   if(!admin)return fail('Only the site owner can run a connection test.',403);
