@@ -22,6 +22,11 @@ const receiptSecret=()=>String(E().PRACTICE_RECEIPT_SECRET||E().CREDENTIAL_ENCRY
 const proof=(value:unknown,userId:string)=>readReceipt(value,receiptSecret(),userId);
 const response=(v:any,status=200)=>Response.json(v,{status,headers:PRIVATE_HEADERS});
 const fail=(msg:string,status=400)=>response({error:msg},status);
+const safeError=(error:unknown)=>{
+ const message=error instanceof Error?error.message:String(error);
+ const secrets=['GEMINI_API_KEY','OPENAI_API_KEY','CREDENTIAL_ENCRYPTION_KEY','AUTH_SECRET','GOOGLE_CLIENT_SECRET'].map(key=>String(E()[key]||'')).filter(value=>value.length>=8);
+ return {name:error instanceof Error?error.name:'UnknownError',message:secrets.reduce((value,secret)=>value.split(secret).join('[redacted]'),message).slice(0,1000)};
+};
 const now=()=>new Date().toISOString();
 function db(){if(!E().DB)throw new Error('STORAGE_UNAVAILABLE');return E().DB as D1Database;}
 const parse=(s:any,fallback:any=null)=>{try{return JSON.parse(s)}catch{return fallback}};
@@ -173,7 +178,7 @@ async function handler(req:Request){
   if(!admin)return fail('Only the site owner can connect an AI provider.',403);
   if(!E().CREDENTIAL_ENCRYPTION_KEY)return fail('Secure credential storage is not configured.',503);
   const body=z.object({key:z.string().min(20).max(300)}).parse(await req.json());
-  try{const model=await verifyGemini(body.key);const encrypted=await encryptCredential(body.key,E().CREDENTIAL_ENCRYPTION_KEY);const checkedAt=now();await execute("INSERT INTO settings (key,value) VALUES ('gemini_connection',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",JSON.stringify({encrypted,model,checkedAt}));await execute('INSERT INTO audit VALUES (?,?,?,?,?)',crypto.randomUUID(),uid,'integration.connected','Gemini connection verified; key stored encrypted',now());return response({ok:true,model,checkedAt});}catch(e){return fail(assessmentFailureMessage(e),400);}
+  try{const model=await verifyGemini(body.key);const encrypted=await encryptCredential(body.key,E().CREDENTIAL_ENCRYPTION_KEY);const checkedAt=now();await execute("INSERT INTO settings (key,value) VALUES ('gemini_connection',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",JSON.stringify({encrypted,model,checkedAt}));await execute('INSERT INTO audit VALUES (?,?,?,?,?)',crypto.randomUUID(),uid,'integration.connected','Gemini connection verified; key stored encrypted',now());return response({ok:true,model,checkedAt});}catch(e){console.error('[Speak Station Gemini connection] ',safeError(e));return fail(assessmentFailureMessage(e),400);}
  }
  if(path==='integration/test'&&req.method==='POST'){
   if(!admin)return fail('Only the site owner can run a connection test.',403);
@@ -184,7 +189,7 @@ async function handler(req:Request){
    try{feedback=await assess(active,questions[0],sample,null,'');}
    catch(error){if(!(error instanceof ProviderFailure)||error.httpStatus!==404||!active.GEMINI_API_KEY)throw error;const model=await verifyGemini(active.GEMINI_API_KEY);active={...active,AI_MODEL:model};const rows=await db().prepare("SELECT value FROM settings WHERE key='gemini_connection'").bind().all();const current:any=rows.results?.[0];if(current){const stored=JSON.parse(current.value);stored.model=model;stored.checkedAt=now();await execute("UPDATE settings SET value=? WHERE key='gemini_connection'",JSON.stringify(stored));}feedback=await assess(active,questions[0],sample,null,'');refreshed=true;}
    return response({ok:true,provider:active.AI_PROVIDER||'gemini',model:active.AI_MODEL,modelRefreshed:refreshed,checkedAt:now(),corrections:feedback.corrections.length,vocabulary:feedback.vocabulary.length,summary:feedback.summary,sampleCorrection:feedback.corrections[0]?.corrected||null});
-  }catch(e){return fail(assessmentFailureMessage(e),502);}
+  }catch(e){console.error('[Speak Station AI request failed] ',safeError(e));return fail(assessmentFailureMessage(e),502);}
 
  }
  if(path==='transcribe'&&req.method==='POST'){
@@ -196,7 +201,7 @@ async function handler(req:Request){
   const bytes=await audio.arrayBuffer();if(!validAudio(bytes))return fail('This file is not a supported audio recording.');
   const minute='transcribe:'+now().slice(0,16),date='transcribe:'+now().slice(0,10);
   for(const [key,limit] of [[minute,8],[date,600]] as const){const usage=await execute('INSERT INTO usage (user_id,date,count) VALUES (?,?,1) ON CONFLICT(user_id,date) DO UPDATE SET count=count+1 WHERE count<?',uid,key,limit);if(!usage.meta.changes)return fail('Automatic transcription limit reached. Please wait before retrying.',429);}
-  try{return response({transcript:await transcribeAudio(config,bytes,audioMime(audio.type),language),source:'audio'});}catch(e){return fail(assessmentFailureMessage(e),502);}
+  try{return response({transcript:await transcribeAudio(config,bytes,audioMime(audio.type),language),source:'audio'});}catch(e){console.error('[Speak Station AI request failed] ',safeError(e));return fail(assessmentFailureMessage(e),502);}
  }
 
  if(path==='assess-part'&&req.method==='POST'){
@@ -367,7 +372,7 @@ async function handler(req:Request){
     const feedback=await assessSpeakingPart(config,part as 1|2|3,evidence);
     if(feedback.questionFeedback?.length!==assigned.length||feedback.questionFeedback.some((q,i)=>q.questionId!==assigned[i].id))return fail('The AI response did not preserve every question-to-answer mapping.',502);
     return response({ok:true,part,questionCount:assigned.length,criteriaCount:Object.keys(feedback.criteria||{}).length,questionMappingVerified:true,model:String(config.AI_MODEL||'configured model'),note:'Real provider + bundled sample audio; no learner score was created or saved.'});
-   }catch(e){return fail(assessmentFailureMessage(e),502)}
+   }catch(e){console.error('[Speak Station AI request failed] ',safeError(e));return fail(assessmentFailureMessage(e),502)}
   }
   if(req.method==='GET'&&path==='admin/diagnostics'){
    // Authenticated OWNER ONLY. Uses the actual production binding and Google
@@ -375,7 +380,7 @@ async function handler(req:Request){
    const checks:{name:string;status:'pass'|'fail';detail:string}[]=[];
    const probe=async(name:string,run:()=>Promise<void>)=>{
     try{await run();checks.push({name,status:'pass',detail:'Verified on this Cloudflare deployment'})}
-    catch{checks.push({name,status:'fail',detail:'Verification failed. Review private Worker logs and applied D1 migrations.'})}
+    catch(error){console.error('[Speak Station diagnostics] '+name,safeError(error));checks.push({name,status:'fail',detail:'Verification failed. Review private Worker logs and applied D1 migrations.'})}
    };
    await probe('Owner Google session and authorization',async()=>{
     if(E().AUTH_MODE!=='google'||!user.userId.startsWith('google:')||!admin)throw Error('NOT_GOOGLE_OWNER');
@@ -393,7 +398,7 @@ async function handler(req:Request){
    await probe('Production D1 transactional write and cleanup',async()=>{
     const id=crypto.randomUUID();
     const statements=[
-     db().prepare('INSERT INTO audit (id,user_id,action,detail,created_at) VALUES (?,?,?,?,?)').bind(id,uid,'qa.probe','Temporary, non-personal health check',now()),
+     db().prepare('INSERT INTO audit (id,actor,action,detail,created_at) VALUES (?,?,?,?,?)').bind(id,uid,'qa.probe','Temporary, non-personal health check',now()),
      db().prepare('DELETE FROM audit WHERE id=?').bind(id)
     ];
     const responses=await db().batch(statements);
@@ -435,5 +440,5 @@ async function handler(req:Request){
  }
  return fail('Route not found.',404);
 }
-export async function GET(req:Request){try{return await handler(req)}catch(e){console.error('Speak Station GET failed');return fail('Your workspace could not load. Please try again.',503);}}
-export async function POST(req:Request){try{return await handler(req)}catch(e){if(e instanceof RequestBoundaryError)return fail(e.message,e.status);if(e instanceof z.ZodError||e instanceof SyntaxError)return fail('Please check the submitted information.');console.error('Speak Station POST failed');return fail('This action could not finish. Please try again.',503);}}
+export async function GET(req:Request){try{return await handler(req)}catch(e){console.error('Speak Station GET failed',safeError(e));return fail('Your workspace could not load. Please try again.',503);}}
+export async function POST(req:Request){try{return await handler(req)}catch(e){if(e instanceof RequestBoundaryError)return fail(e.message,e.status);if(e instanceof z.ZodError||e instanceof SyntaxError)return fail('Please check the submitted information.');console.error('Speak Station POST failed',safeError(e));return fail('This action could not finish. Please try again.',503);}}
