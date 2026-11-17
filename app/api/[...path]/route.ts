@@ -20,7 +20,7 @@ export const dynamic='force-dynamic';
 const E=()=>env as any;
 const receiptSecret=()=>String(E().PRACTICE_RECEIPT_SECRET||E().CREDENTIAL_ENCRYPTION_KEY||'');
 const proof=(value:unknown,userId:string)=>readReceipt(value,receiptSecret(),userId);
-const response=(v:any,status=200)=>Response.json(v,{status,headers:PRIVATE_HEADERS});
+const response=(v:any,status=200)=>Response.json(v,{status,headers:{...PRIVATE_HEADERS,'X-Speak-Station-API':'integration-errors-v3'}});
 const fail=(msg:string,status=400)=>response({error:msg},status);
 const safeError=(error:unknown)=>{
  const message=error instanceof Error?error.message:String(error);
@@ -32,6 +32,21 @@ function db(){if(!E().DB)throw new Error('STORAGE_UNAVAILABLE');return E().DB as
 const parse=(s:any,fallback:any=null)=>{try{return JSON.parse(s)}catch{return fallback}};
 async function rows(sql:string,...args:any[]){return (await db().prepare(sql).bind(...args).all()).results as any[];}
 async function execute(sql:string,...args:any[]){return db().prepare(sql).bind(...args).run();}
+async function runWithGeminiModelFallback<T>(config:any,task:(active:any)=>Promise<T>):Promise<{value:T;config:any;modelRefreshed:boolean}>{
+ try{return {value:await task(config),config,modelRefreshed:false};}
+ catch(error){
+  if(!(error instanceof ProviderFailure)||![400,403,404].includes(error.httpStatus)||!config.GEMINI_API_KEY)throw error;
+  const model=await verifyGemini(config.GEMINI_API_KEY);
+  if(model===config.AI_MODEL)throw error;
+  const refreshed={...config,AI_MODEL:model};
+  const value=await task(refreshed);
+  try{
+   const storedRows=await rows("SELECT value FROM settings WHERE key='gemini_connection'");
+   if(storedRows[0]){const stored=JSON.parse(storedRows[0].value);stored.model=model;stored.checkedAt=now();await execute("UPDATE settings SET value=? WHERE key='gemini_connection'",JSON.stringify(stored));}
+  }catch(saveError){console.error('[Speak Station model refresh persistence failed]',safeError(saveError));}
+  return {value,config:refreshed,modelRefreshed:true};
+ }
+}
 async function allQuestions(){const changes=await rows('SELECT * FROM question_overrides');const map=new Map(questions.map(q=>[q.id,q]));for(const c of changes){if(c.archived)map.delete(c.id);else map.set(c.id,parse(c.data));}return [...map.values()];}
 
 function compactIssueCounts(feedback:any){
@@ -200,10 +215,10 @@ async function handler(req:Request){
   const config=await aiConfiguration(E(),db());if(!(config.GEMINI_API_KEY||config.OPENAI_API_KEY))return fail('Connect an AI key first.',503);
   const date=now().slice(0,10),limit=Math.max(1,Math.min(100,Number(E().DAILY_AI_LIMIT)||20));const used=await execute('INSERT INTO usage (user_id,date,count) VALUES (?,?,1) ON CONFLICT(user_id,date) DO UPDATE SET count=count+1 WHERE count<?',uid,date,limit);if(!used.meta.changes)return fail('Daily assessment limit reached. Try again tomorrow.',429);
   try{
-   let active=config,refreshed=false;const sample='Synthetic connection test only: I am living in Dhaka since five years. I enjoy my hometown because the people are friendly.';let feedback;
-   try{feedback=await assess(active,questions[0],sample,null,'');}
-   catch(error){if(!(error instanceof ProviderFailure)||error.httpStatus!==404||!active.GEMINI_API_KEY)throw error;const model=await verifyGemini(active.GEMINI_API_KEY);active={...active,AI_MODEL:model};const rows=await db().prepare("SELECT value FROM settings WHERE key='gemini_connection'").bind().all();const current:any=rows.results?.[0];if(current){const stored=JSON.parse(current.value);stored.model=model;stored.checkedAt=now();await execute("UPDATE settings SET value=? WHERE key='gemini_connection'",JSON.stringify(stored));}feedback=await assess(active,questions[0],sample,null,'');refreshed=true;}
-   return response({ok:true,provider:active.AI_PROVIDER||'gemini',model:active.AI_MODEL,modelRefreshed:refreshed,checkedAt:now(),corrections:feedback.corrections.length,vocabulary:feedback.vocabulary.length,summary:feedback.summary,sampleCorrection:feedback.corrections[0]?.corrected||null});
+   const sample='Synthetic connection test only: I am living in Dhaka since five years. I enjoy my hometown because the people are friendly.';
+   const checked=await runWithGeminiModelFallback(config,active=>assess(active,questions[0],sample,null,''));
+   const feedback=checked.value,active=checked.config;
+   return response({ok:true,provider:active.AI_PROVIDER||'gemini',model:active.AI_MODEL,modelRefreshed:checked.modelRefreshed,checkedAt:now(),corrections:feedback.corrections.length,vocabulary:feedback.vocabulary.length,summary:feedback.summary,sampleCorrection:feedback.corrections[0]?.corrected||null});
   }catch(e){console.error('[Speak Station AI request failed] ',safeError(e));return fail(assessmentFailureMessage(e),502);}
 
  }
@@ -216,7 +231,7 @@ async function handler(req:Request){
   const bytes=await audio.arrayBuffer();if(!validAudio(bytes))return fail('This file is not a supported audio recording.');
   const minute='transcribe:'+now().slice(0,16),date='transcribe:'+now().slice(0,10);
   for(const [key,limit] of [[minute,8],[date,600]] as const){const usage=await execute('INSERT INTO usage (user_id,date,count) VALUES (?,?,1) ON CONFLICT(user_id,date) DO UPDATE SET count=count+1 WHERE count<?',uid,key,limit);if(!usage.meta.changes)return fail('Automatic transcription limit reached. Please wait before retrying.',429);}
-  try{return response({transcript:await transcribeAudio(config,bytes,audioMime(audio.type),language),source:'audio'});}catch(e){console.error('[Speak Station AI request failed] ',safeError(e));return fail(assessmentFailureMessage(e),502);}
+  try{const result=await runWithGeminiModelFallback(config,active=>transcribeAudio(active,bytes,audioMime(audio.type),language));return response({transcript:result.value,source:'audio',modelRefreshed:result.modelRefreshed});}catch(e){console.error('[Speak Station AI request failed] ',safeError(e));return fail(assessmentFailureMessage(e),502);}
  }
 
  if(path==='assess-part'&&req.method==='POST'){
@@ -280,7 +295,7 @@ async function handler(req:Request){
   const used=await execute('INSERT INTO usage (user_id,date,count) VALUES (?,?,1) ON CONFLICT(user_id,date) DO UPDATE SET count=count+1 WHERE count<?',uid,date,limit);
   if(!used.meta.changes)return fail('Daily AI assessment limit reached. Try again tomorrow.',429);
   try{
-   const feedback=await assessSpeakingPart(config,meta.part,answers);
+   const checked=await runWithGeminiModelFallback(config,active=>assessSpeakingPart(active,meta.part,answers));const feedback=checked.value;
    const scores=['fluency','lexical','grammar','pronunciation'].map(k=>(feedback.criteria as any)[k].score);
    const issues=compactIssueCounts(feedback),durationSeconds=Math.round(answers.reduce((total,item)=>total+item.duration,0));
    const receipts=await Promise.all(answers.map(async item=>{
