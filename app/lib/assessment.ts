@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import {providerFailure} from './provider-errors';
+import {fetchWithProviderRetry,providerFailure} from './provider-errors';
 import {estimatedBand} from './content';
 import type {Question} from './questions';
 const correction=z.object({original:z.string().max(2000),problem:z.string(),category:z.string(),corrected:z.string(),natural:z.string(),explanation:z.string(),action:z.string(),confidence:z.preprocess(value=>typeof value==='string'?value:'AI suggestion — verify against your original answer.',z.string())});
@@ -20,7 +20,7 @@ export async function assess(env:any,q:Question,transcript:string,audio:ArrayBuf
   const endpoint=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(env.AI_MODEL||'gemini-3.8-flash')}:generateContent`;
   const payload:any={systemInstruction:{parts:[{text:system}]},contents:[{role:'user',parts:[{text:prompt+(audio?'':'\nTranscript-only practice. No audio evidence: do not assess pronunciation or acoustic fluency.')},...(audio?[{inlineData:{mimeType:mime.split(';')[0],data:btoa(binary)}}]:[])]}],generationConfig:{responseMimeType:'application/json',temperature:0.2,maxOutputTokens:10000}};
   const send=()=>fetch(endpoint,{method:'POST',redirect:'manual',headers:{'Content-Type':'application/json','x-goog-api-key':env.GEMINI_API_KEY},body:JSON.stringify(payload),signal:AbortSignal.timeout(90000)});
-  let res=await send();
+  let res=await fetchWithProviderRetry(send,2);
 
 
   if(!res.ok)throw await providerFailure(res,provider==='gemini'?'Gemini':'OpenAI');const json:any=await res.json();raw=json.candidates?.[0]?.content?.parts?.filter((p:any)=>!p.thought).map((p:any)=>p.text||'').join('')||'';
