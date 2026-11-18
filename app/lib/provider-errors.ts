@@ -13,3 +13,22 @@ export class ProviderFailure extends Error {
 }
 export async function providerFailure(res:Response,provider='Gemini'):Promise<ProviderFailure>{let value:any=null;try{value=await res.json()}catch{}const error=value?.error;const code=typeof error?.status==='string'&&/^[A-Z_]{1,80}$/.test(error.status)?error.status:'';const zeroQuota=res.status===429&&(/limit\s*:\s*0\b/i.test(String(error?.message||''))||(error?.details||[]).some((d:any)=>(d.violations||[]).some((v:any)=>String(v.quotaValue)==='0')));const detail=typeof error?.message==='string'?error.message:'';return new ProviderFailure(provider,res.status,code,zeroQuota,detail);}
 export function assessmentFailureMessage(error:unknown){if(error instanceof ProviderFailure)return error.message;if(error instanceof Error&&error.name==='ZodError'){const issue=(error as any).issues?.[0];const path=Array.isArray(issue?.path)?issue.path.filter((p:any)=>typeof p==='number'||/^[a-zA-Z_]+$/.test(p)).join('.'):'';return `The AI replied, but its feedback format was incomplete${path?` at “${path}”`:''}. Please retry; your answer has not been marked complete.`;}if(error instanceof SyntaxError)return 'The AI replied with unreadable feedback. Please retry; your answer has not been marked complete.';if(error instanceof Error&&['TimeoutError','AbortError'].includes(error.name))return 'The AI request timed out. Your answer remains on this device; please retry.';return 'The assessment could not finish. Your answer remains on this device. Check your AI connection and retry.';}
+
+
+/**
+ * Retry only transient Google/provider availability failures. Do not retry
+ * quota (429), authentication, permission, or malformed-request responses.
+ * Each call is freshly issued by the caller so request bodies remain reusable.
+ */
+export async function fetchWithProviderRetry(send:()=>Promise<Response>,maxRetries=2):Promise<Response>{
+ let response:Response|undefined;
+ for(let attempt=0;attempt<=maxRetries;attempt++){
+  response=await send();
+  if(response.ok||![500,502,503,504].includes(response.status)||attempt===maxRetries)return response;
+  const retryAfter=response.headers.get('retry-after');
+  const retrySeconds=retryAfter&&/^\\d+(?:\\.\\d+)?$/.test(retryAfter)?Number(retryAfter):0;
+  const delay=Math.min(5000,Math.max(1000*2**attempt,retrySeconds*1000));
+  await new Promise(resolve=>setTimeout(resolve,delay));
+ }
+ return response!;
+}
