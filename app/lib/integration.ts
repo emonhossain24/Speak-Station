@@ -50,5 +50,5 @@ export async function verifyGemini(key:string){
  const rank=(name:string)=>(!/(preview|experimental)/.test(name)?10000:0)+version(name)*100+(/flash-lite/.test(name)?0:25);
  candidates.sort((a:any,b:any)=>rank(b.name)-rank(a.name));
  if(!candidates.length)throw new Error('Google accepted the API key, but this project has no available Gemini Flash model with generateContent support. Check Google AI Studio model access and API enablement.');
- return String(candidates[0].name).replace(/^models\\//,'');
+ return String(candidates[0].name).replace(/^models\//,'');
 }
