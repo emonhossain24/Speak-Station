@@ -45,7 +45,7 @@ export async function verifyGemini(key:string){
  if(!res.ok)throw await providerFailure(res,'Gemini');
  const value:any=await res.json();
  const candidates=(value.models||[]).filter((model:any)=>(model.supportedGenerationMethods||[]).includes('generateContent')&&/flash/.test(model.name)&&!/(image|tts|live|embed|thinking|cyber|robot|computer|agent)/.test(model.name));
- const version=(name:string)=>Number(name.match(/gemini-(\\d+(?:\\.\\d+)?)/)?.[1]||0);
+ const version=(name:string)=>Number(name.match(/gemini-(\d+(?:\.\d+)?)/)?.[1]||0);
  // Prefer the full Flash model over Flash-Lite at the same generation.
  const rank=(name:string)=>(!/(preview|experimental)/.test(name)?10000:0)+version(name)*100+(/flash-lite/.test(name)?0:25);
  candidates.sort((a:any,b:any)=>rank(b.name)-rank(a.name));
