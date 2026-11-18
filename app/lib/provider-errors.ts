@@ -26,7 +26,7 @@ export async function fetchWithProviderRetry(send:()=>Promise<Response>,maxRetri
   response=await send();
   if(response.ok||![500,502,503,504].includes(response.status)||attempt===maxRetries)return response;
   const retryAfter=response.headers.get('retry-after');
-  const retrySeconds=retryAfter&&/^\\d+(?:\\.\\d+)?$/.test(retryAfter)?Number(retryAfter):0;
+  const retrySeconds=retryAfter&&/^\d+(?:\.\d+)?$/.test(retryAfter)?Number(retryAfter):0;
   const delay=Math.min(5000,Math.max(1000*2**attempt,retrySeconds*1000));
   await new Promise(resolve=>setTimeout(resolve,delay));
  }
