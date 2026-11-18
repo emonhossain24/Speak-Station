@@ -1,4 +1,5 @@
 import {providerFailure} from './provider-errors';
+function toArrayBuffer(bytes:Uint8Array):ArrayBuffer{const copy=new Uint8Array(bytes.byteLength);copy.set(bytes);return copy.buffer;}
 function credentialKeyBytes(key:string){
  let bytes:Uint8Array;
  try{bytes=Uint8Array.from(atob(key.trim()),c=>c.charCodeAt(0));}catch{throw new Error('CREDENTIAL_ENCRYPTION_KEY must be Base64-encoded 32 random bytes.');}
@@ -6,8 +7,8 @@ function credentialKeyBytes(key:string){
  return bytes;
 }
 export function validateCredentialEncryptionKey(key:string){credentialKeyBytes(key);}
-export async function encryptCredential(value:string,key:string){const bytes=credentialKeyBytes(key);const aes=await crypto.subtle.importKey('raw',bytes,'AES-GCM',false,['encrypt']);const iv=crypto.getRandomValues(new Uint8Array(12));const cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv},aes,new TextEncoder().encode(value));return JSON.stringify({iv:Array.from(iv),cipher:Array.from(new Uint8Array(cipher))});}
-export async function decryptCredential(value:string,key:string){const item=JSON.parse(value);if(!Array.isArray(item.iv)||item.iv.length!==12||!Array.isArray(item.cipher)||!item.cipher.length)throw new Error('Saved Gemini credential has an invalid encrypted format.');const aes=await crypto.subtle.importKey('raw',credentialKeyBytes(key),'AES-GCM',false,['decrypt']);const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:new Uint8Array(item.iv)},aes,new Uint8Array(item.cipher));return new TextDecoder().decode(plain);}
+export async function encryptCredential(value:string,key:string){const bytes=credentialKeyBytes(key);const aes=await crypto.subtle.importKey('raw',toArrayBuffer(bytes),'AES-GCM',false,['encrypt']);const iv=crypto.getRandomValues(new Uint8Array(12));const cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv:toArrayBuffer(iv)},aes,new TextEncoder().encode(value));return JSON.stringify({iv:Array.from(iv),cipher:Array.from(new Uint8Array(cipher))});}
+export async function decryptCredential(value:string,key:string){const item=JSON.parse(value);if(!Array.isArray(item.iv)||item.iv.length!==12||!Array.isArray(item.cipher)||!item.cipher.length)throw new Error('Saved Gemini credential has an invalid encrypted format.');const aes=await crypto.subtle.importKey('raw',toArrayBuffer(credentialKeyBytes(key)),'AES-GCM',false,['decrypt']);const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:toArrayBuffer(new Uint8Array(item.iv))},aes,toArrayBuffer(new Uint8Array(item.cipher)));return new TextDecoder().decode(plain);}
 
 type ConnectionInfo={encrypted?:string;model?:string;checkedAt?:string};
 async function savedConnection(env:any,db:D1Database):Promise<{key?:string;model?:string;checkedAt?:string;unavailable?:string}|null>{
@@ -41,14 +42,14 @@ export async function connectionStatus(env:any,db:D1Database){
 export async function verifyGemini(key:string){
  // Listing models validates the API key without consuming generateContent quota.
  // The actual generation check is performed separately by the Admin connection test.
- const res=await fetch('https://generativelanguage.googleapis.com/v1beta/models',{redirect:'error',headers:{'x-goog-api-key':key},signal:AbortSignal.timeout(20000)});
+ const res=await fetch('https://generativelanguage.googleapis.com/v1beta/models',{redirect:'manual',headers:{'x-goog-api-key':key},signal:AbortSignal.timeout(20000)});
  if(!res.ok)throw await providerFailure(res,'Gemini');
  const value:any=await res.json();
  const candidates=(value.models||[]).filter((model:any)=>(model.supportedGenerationMethods||[]).includes('generateContent')&&/flash/.test(model.name)&&!/(image|tts|live|embed|thinking|cyber|robot|computer|agent)/.test(model.name));
- const version=(name:string)=>Number(name.match(/gemini-(\\d+(?:\\.\\d+)?)/)?.[1]||0);
+ const version=(name:string)=>Number(name.match(/gemini-(\d+(?:\.\d+)?)/)?.[1]||0);
  // Prefer the full Flash model over Flash-Lite at the same generation.
  const rank=(name:string)=>(!/(preview|experimental)/.test(name)?10000:0)+version(name)*100+(/flash-lite/.test(name)?0:25);
  candidates.sort((a:any,b:any)=>rank(b.name)-rank(a.name));
  if(!candidates.length)throw new Error('Google accepted the API key, but this project has no available Gemini Flash model with generateContent support. Check Google AI Studio model access and API enablement.');
- return String(candidates[0].name).replace(/^models\\//,'');
+ return String(candidates[0].name).replace(/^models\//,'');
 }

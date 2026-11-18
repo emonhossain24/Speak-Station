@@ -7,7 +7,8 @@ export class ProviderFailure extends Error {
    :httpStatus===404?'The selected model is unavailable. Reconnect the key to refresh available models.'
    :httpStatus===400?'The provider rejected the request. Check the selected model and supported audio format.'
    :httpStatus>=500?'The provider is temporarily unavailable. Retry later.':'The provider could not complete the request.';
-  const safeDetail=detail.replace(/AIza[0-9A-Za-z_-]{20,}/g,'[redacted API key]').replace(/[\r\n\t]+/g,' ').slice(0,300);\n  super(prefix+advice+(safeDetail?` Provider message: ${safeDetail}`:''));this.name='ProviderFailure';
+  const safeDetail=detail.replace(/AIza[0-9A-Za-z_-]{20,}/g,'[redacted API key]').replace(/[\r\n\t]+/g,' ').slice(0,300);
+  super(prefix+advice+(safeDetail?` Provider message: ${safeDetail}`:''));this.name='ProviderFailure';
  }
 }
 export async function providerFailure(res:Response,provider='Gemini'):Promise<ProviderFailure>{let value:any=null;try{value=await res.json()}catch{}const error=value?.error;const code=typeof error?.status==='string'&&/^[A-Z_]{1,80}$/.test(error.status)?error.status:'';const zeroQuota=res.status===429&&(/limit\s*:\s*0\b/i.test(String(error?.message||''))||(error?.details||[]).some((d:any)=>(d.violations||[]).some((v:any)=>String(v.quotaValue)==='0')));const detail=typeof error?.message==='string'?error.message:'';return new ProviderFailure(provider,res.status,code,zeroQuota,detail);}
