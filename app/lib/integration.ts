@@ -41,7 +41,7 @@ export async function connectionStatus(env:any,db:D1Database){
 export async function verifyGemini(key:string){
  // Listing models validates the API key without consuming generateContent quota.
  // The actual generation check is performed separately by the Admin connection test.
- const res=await fetch('https://generativelanguage.googleapis.com/v1beta/models',{redirect:'error',headers:{'x-goog-api-key':key},signal:AbortSignal.timeout(20000)});
+ const res=await fetch('https://generativelanguage.googleapis.com/v1beta/models',{redirect:'manual',headers:{'x-goog-api-key':key},signal:AbortSignal.timeout(20000)});
  if(!res.ok)throw await providerFailure(res,'Gemini');
  const value:any=await res.json();
  const candidates=(value.models||[]).filter((model:any)=>(model.supportedGenerationMethods||[]).includes('generateContent')&&/flash/.test(model.name)&&!/(image|tts|live|embed|thinking|cyber|robot|computer|agent)/.test(model.name));
