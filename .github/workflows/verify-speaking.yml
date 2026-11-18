@@ -52,6 +52,8 @@ jobs:
         run: node scripts/tests/verify-google-oauth.mjs
       - name: Enforce verified Google owner-only admin access
         run: node scripts/tests/verify-owner-access.mjs
+      - name: Retry temporary AI provider outages without retrying quota failures
+        run: node scripts/tests/verify-provider-retry.mjs
       - name: AI assessment integration simulations for Parts 1, 2 and 3
         run: node scripts/tests/verify-ai-assessment.mjs
       - name: Cloudflare production build (no secrets)
