@@ -1,6 +1,6 @@
 import {feedbackSchema,type Feedback} from './assessment';
 import {estimatedBand} from './content';
-import {providerFailure} from './provider-errors';
+import {fetchWithProviderRetry,providerFailure} from './provider-errors';
 import type {Question} from './questions';
 import {normalizePartQuestionReviews,type PartQuestionReview} from './question-reviews';
 
@@ -22,11 +22,12 @@ Use the EXACT questionId supplied immediately before that question's audio. The 
   parts.push({inlineData:{mimeType:a.mime.split(';')[0],data:btoa(binary)}});
  }
  const model=env.AI_MODEL||'gemini-3.8-flash';
- const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{
+ const send=()=>fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{
   method:'POST',redirect:'manual',headers:{'Content-Type':'application/json','x-goog-api-key':env.GEMINI_API_KEY},
   body:JSON.stringify({systemInstruction:{parts:[{text:instructions}]},contents:[{role:'user',parts}],generationConfig:{responseMimeType:'application/json',temperature:0.15,maxOutputTokens:9000}}),
   signal:AbortSignal.timeout(110000)
  });
+ const res=await fetchWithProviderRetry(send,2);
  if(!res.ok)throw await providerFailure(res,'Gemini');
  const parsed:any=await res.json();
  const raw=parsed.candidates?.[0]?.content?.parts?.filter((p:any)=>!p.thought).map((p:any)=>p.text||'').join('')||'';
