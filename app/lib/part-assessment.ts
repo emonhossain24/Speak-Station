@@ -35,9 +35,12 @@ Use the EXACT questionId supplied immediately before that question's audio. The 
  const response=JSON.parse(raw.replace(/^\`\`\`json\s*|\s*\`\`\`$/g,''));
  const questionFeedback=normalizePartQuestionReviews(response.questionFeedback,answers.map(a=>({question:a.question,transcript:a.transcript})));
  const result=feedbackSchema.parse(response);
- const wordCount=(result.transcript||answers.map(a=>a.transcript).join(' ')).match(/[A-Za-z]+/g)?.length||0;
+ // The examiner receives the actual audio for every answer. Do not invalidate
+ // acoustic evidence merely because browser speech recognition produced a short
+ // or empty transcript. Keep a criterion only when the audio examiner supplied
+ // a score with supporting evidence.
  for(const c of Object.values(result.criteria)){
-  if(c.score!==null)c.score=wordCount<20||!c.evidence.length?null:Math.round(c.score*2)/2;
+  if(c.score!==null)c.score=c.evidence.length?Math.round(c.score*2)/2:null;
  }
  result.correctedAnswer=result.correctedAnswer.replace(/\s*\[([^\]]*)\]/g,(value,label)=>/^(unclear|non-English speech|inaudible)$/i.test(label)?value:'').trim();
  result.overall=estimatedBand(result);
