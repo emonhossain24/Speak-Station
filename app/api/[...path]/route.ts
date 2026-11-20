@@ -112,7 +112,7 @@ async function state(user:any){
  const [profiles,attempts,saved,days,tests,cooldowns]=await Promise.all([rows('SELECT * FROM profiles WHERE user_id=?',user.userId),rows('SELECT * FROM attempts WHERE user_id=? AND created_at>=? ORDER BY created_at DESC LIMIT 100',user.userId,new Date(Date.now()-86400000).toISOString()),rows('SELECT * FROM saved WHERE user_id=?',user.userId),rows('SELECT * FROM days WHERE user_id=? ORDER BY day',user.userId),rows('SELECT * FROM tests WHERE user_id=?',user.userId),activeCooldowns(user.userId)]);
  const complete=days.map(d=>d.day);
  const announcementRow=(await rows("SELECT value FROM settings WHERE key='global_announcement'"))[0];const announcement=parse(announcementRow?.value)||null;
- return {authProvider,content,contentRevision,announcement,messages:await rows('SELECT id,subject,body,reply,status,created_at FROM messages WHERE user_id=? ORDER BY created_at DESC LIMIT 50',user.userId),user:{id:user.userId,name:user.displayName,email:user.email,memberNumber:(await rows('SELECT member_number FROM member_numbers WHERE user_id=?',user.userId))[0]?.member_number??null},profile:profiles[0],attempts:attempts.map(a=>({...a,feedback:parse(a.feedback)})),saved:saved.map(s=>({...s,data:parse(s.data)})),completed:complete,activityDays:days.map(d=>({day:d.day,completedAt:d.completed_at})),tests,streak:streak(days.map(a=>a.completed_at)),stage:nextStage(complete,tests,profiles[0].track,content.exams),cooldowns,scheduling:await studyQuota(user.userId),weeklyPassBand:WEEKLY_PASS_BAND,aiConfigured:connection.configured,...(admin?{connection}:{}),storageReady:true,audioStorageReady:false,learningStorage:'progress-only',isAdmin:isVerifiedGoogleOwner(user,E())};
+ return {authProvider,content,contentRevision,announcement,messages:await rows('SELECT id,subject,body,reply,status,created_at FROM messages WHERE user_id=? ORDER BY created_at DESC LIMIT 50',user.userId),user:{id:user.userId,name:user.displayName,email:user.email,memberNumber:(await rows('SELECT member_number FROM member_numbers WHERE user_id=?',user.userId))[0]?.member_number??null},profile:profiles[0],attempts:attempts.map(a=>({...a,feedback:parse(a.feedback)})),saved:saved.map(s=>({...s,data:parse(s.data)})),completed:complete,activityDays:days.map(d=>({day:d.day,completedAt:d.completed_at})),tests,streak:streak(days.map(a=>a.completed_at)),stage:nextStage(complete,tests,profiles[0].track,content.exams),cooldowns:admin?[]:cooldowns,scheduling:admin?{practice:{allowed:true,nextAt:null,reason:'Admin access: one start per unit per minute, no hourly or daily cap.',recentCount:0,modulesCompleted:0},test:{allowed:true,nextAt:null,reason:'Admin access: no weekly or revision test gates.',recentCount:0,modulesCompleted:0}}:await studyQuota(user.userId),weeklyPassBand:WEEKLY_PASS_BAND,aiConfigured:connection.configured,...(admin?{connection}:{}),storageReady:true,audioStorageReady:false,learningStorage:'progress-only',isAdmin:isVerifiedGoogleOwner(user,E())};
 }
 async function handler(req:Request){
  const path=new URL(req.url).pathname.replace(/^\/api\//,'');const user=await getChatGPTUser();
@@ -153,36 +153,39 @@ async function handler(req:Request){
   if(kind==='free'){
    const bank=await allQuestions(),book=buildSpeakingBooks(bank,240)[day-1];
    if(!book||day>240)return fail('Speaking book unavailable.',404);
-   if(mode==='practice'){
+   if(mode==='practice'&&!admin){
     const locked=new Set((await activeCooldowns(uid)).map(x=>x.question_id));
     if(book.questions.some(q=>locked.has(q.id)))return fail('Book questions are on their 15-day cooldown.',409);
    }
   }else{
    const context=await learningContext(uid);
-   if(kind==='daily'&&(context.stage.type!==kind||context.stage.day!==day))return fail('Finish the current required stage first.',409);
+   if(!admin&&kind==='daily'&&(context.stage.type!==kind||context.stage.day!==day))return fail('Finish the current required stage first.',409);
    if(kind!=='daily'){
     const exam=context.content.exams.find(x=>x.kind===kind&&x.day===day);
     if(!exam)return fail('Unknown weekly or revision exam.',404);
     const previous=await rows('SELECT kind,milestone,answers FROM tests WHERE user_id=?',uid);
     const gate=weeklyGate(previous,kind,exam.number);
-    if(!gate.unlocked)return fail(gate.reason,409);
-    if(previous.some(t=>t.kind===kind&&t.milestone===day&&passedTest(t)))return fail('Exam already passed.',409);
+    if(!admin&&!gate.unlocked)return fail(gate.reason,409);
+    if(!admin&&previous.some(t=>t.kind===kind&&t.milestone===day&&passedTest(t)))return fail('Exam already passed.',409);
    }
   }
   const history=await studyHistory(uid),timestamp=now();
   const resumable=history.sessions.find((row:any)=>row.kind===kind&&row.day===day&&row.mode===mode&&!row.completed_at&&row.expires_at>timestamp);
   if(resumable)return response({sessionId:resumable.id,startedAt:resumable.started_at,expiresAt:resumable.expires_at,resumed:true,scheduling:await studyQuota(uid)});
-  const check=eligibility(category,[...history.sessions,...history.legacy],history.modules);
+  const check=admin?{allowed:true,nextAt:null,reason:'Admin access',recentCount:0,modulesCompleted:history.modules.length}:eligibility(category,[...history.sessions,...history.legacy],history.modules);
   if(!check.allowed)return response({error:check.reason,nextAt:check.nextAt,modulesCompleted:check.modulesCompleted},429);
   const sessionId=crypto.randomUUID(),expiresAt=new Date(Date.now()+86400000).toISOString();
   const cutoff4=new Date(Date.now()-PRACTICE_INTERVAL_MS).toISOString();
   const cutoff24=new Date(Date.now()-PRACTICE_DAY_MS).toISOString();
   const cutoff7=new Date(Date.now()-TEST_INTERVAL_MS).toISOString();
   // Atomic D1 admission: two simultaneous tabs cannot both consume the same slot.
-  const sql=category==='practice'?
+  const sql=admin?
+   "INSERT INTO study_sessions(id,user_id,category,kind,day,mode,started_at,expires_at) SELECT ?,?,?,?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM study_sessions WHERE user_id=? AND kind=? AND day=? AND mode=? AND started_at>?)":
+   category==='practice'?
    "INSERT INTO study_sessions(id,user_id,category,kind,day,mode,started_at,expires_at) SELECT ?,?,?,?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM study_sessions WHERE user_id=? AND category='practice' AND started_at>?) AND (SELECT COUNT(*) FROM study_sessions WHERE user_id=? AND category='practice' AND started_at>?)<6":
    "INSERT INTO study_sessions(id,user_id,category,kind,day,mode,started_at,expires_at) SELECT ?,?,?,?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM study_sessions WHERE user_id=? AND category='test' AND started_at>?)";
-  const values=category==='practice'?[sessionId,uid,category,kind,day,mode,timestamp,expiresAt,uid,cutoff4,uid,cutoff24]:
+  const values=admin?[sessionId,uid,category,kind,day,mode,timestamp,expiresAt,uid,kind,day,mode,new Date(Date.now()-60000).toISOString()]:
+   category==='practice'?[sessionId,uid,category,kind,day,mode,timestamp,expiresAt,uid,cutoff4,uid,cutoff24]:
    [sessionId,uid,category,kind,day,mode,timestamp,expiresAt,uid,cutoff7];
   const admission=await execute(sql,...values);
   if(!admission.meta.changes)return response({error:'Another session just used this time slot. Refresh to see the next available time.',scheduling:await studyQuota(uid)},429);
@@ -236,7 +239,7 @@ async function handler(req:Request){
   if(!(audio instanceof File)||audio.size<500||audio.size>8*1024*1024||!/^audio\/(webm|ogg|mp4|wav|mpeg)$/.test(audioMime(audio.type)))return fail('Use an audio recording of up to 8 MB.');
   const bytes=await audio.arrayBuffer();if(!validAudio(bytes))return fail('This file is not a supported audio recording.');
   const minute='transcribe:'+now().slice(0,16),date='transcribe:'+now().slice(0,10);
-  for(const [key,limit] of [[minute,8],[date,600]] as const){const usage=await execute('INSERT INTO usage (user_id,date,count) VALUES (?,?,1) ON CONFLICT(user_id,date) DO UPDATE SET count=count+1 WHERE count<?',uid,key,limit);if(!usage.meta.changes)return fail('Automatic transcription limit reached. Please wait before retrying.',429);}
+  for(const [key,limit] of (admin?[]:[[minute,8],[date,600]] as const)){const usage=await execute('INSERT INTO usage (user_id,date,count) VALUES (?,?,1) ON CONFLICT(user_id,date) DO UPDATE SET count=count+1 WHERE count<?',uid,key,limit);if(!usage.meta.changes)return fail('Automatic transcription limit reached. Please wait before retrying.',429);}
   try{const result=await runWithGeminiModelFallback(config,active=>transcribeAudio(active,bytes,audioMime(audio.type),language));return response({transcript:result.value,source:'audio',modelRefreshed:result.modelRefreshed});}catch(e){console.error('[Speak Station AI request failed] ',safeError(e));return fail(assessmentFailureMessage(e),502);}
  }
 
@@ -259,7 +262,7 @@ async function handler(req:Request){
   if(new Set(ids).size!==ids.length)return fail('Each speaking question must be unique.',400);
   const bank=await allQuestions();
   let assigned:Question[];
-  if(meta.kind==='free'){
+  if(meta.kind==='free'&&!admin){
    if(!meta.bookNumber)return fail('Choose a complete speaking book first.',400);
    const book=buildSpeakingBooks(bank,240)[meta.bookNumber-1];
    if(!book||meta.day!==meta.bookNumber)return fail('This book no longer matches your session.',409);
@@ -267,15 +270,15 @@ async function handler(req:Request){
   }else{
    const current=await learningContext(uid);
    if(meta.kind==='daily'){
-    if(current.stage.type!=='daily'||current.stage.day!==meta.day)return fail('Your daily practice stage is not active.',409);
+    if(!admin&&(current.stage.type!=='daily'||current.stage.day!==meta.day))return fail('Your daily practice stage is not active.',409);
     assigned=dailyQuestions(meta.day,bank);
    }else{
     const test=current.content.exams.find(e=>e.kind===meta.kind&&e.day===meta.day);
     if(!test)return fail('This exam does not exist.',404);
     const previous=await rows('SELECT kind,milestone,answers FROM tests WHERE user_id=?',uid);
     const gate=weeklyGate(previous,meta.kind,test.number);
-    if(!gate.unlocked)return fail(gate.reason,409);
-    if(previous.some(t=>t.kind===meta.kind&&t.milestone===meta.day&&passedTest(t)))return fail('You have already passed this exam.',409);
+    if(!admin&&!gate.unlocked)return fail(gate.reason,409);
+    if(!admin&&previous.some(t=>t.kind===meta.kind&&t.milestone===meta.day&&passedTest(t)))return fail('You have already passed this exam.',409);
     assigned=stageQuestions(meta.day,meta.kind,bank,current.content,examQuestions);
    }
   }
