@@ -322,9 +322,16 @@ async function handler(req:Request){
   const b=z.object({receipts:z.array(z.string().max(4000)).min(3).max(20),questionIds:z.array(z.string().max(100)).min(3).max(20),bookNumber:z.number().int().min(1).max(240).optional(),bookMode:z.enum(['practice','exam']).optional(),sessionId:z.string().uuid()}).parse(await req.json());
   const receipts=await Promise.all(b.receipts.map(v=>proof(v,uid)));if(receipts.some(r=>!r||!r.recorded||!r.reviewed))return fail('Record, assess and review every test answer first.',409);
   const valid=receipts as PracticeReceipt[];
-  const sessionMode=b.bookMode||'practice',active=await requireStudySession(uid,b.sessionId,'free',b.bookNumber||0,sessionMode);
-  if(!active||valid.some(r=>r.sessionId!==b.sessionId))return fail('This practice/test slot has expired or was already completed.',429);
+  const sessionMode=b.bookMode||'practice';
+  const study=(await rows('SELECT id,kind,day,mode,expires_at,completed_at FROM study_sessions WHERE id=? AND user_id=?',b.sessionId,uid))[0];
+  if(!study||study.kind!=='free'||study.day!==(b.bookNumber||0)||study.mode!==sessionMode||valid.some(r=>r.sessionId!==b.sessionId))return fail('The speaking results do not belong to this practice session. Reopen the same completed book and try again.',409);
   if(new Set(b.questionIds).size!==b.questionIds.length||new Set(valid.map(r=>r.questionId)).size!==b.questionIds.length||valid.length!==b.questionIds.length||valid.some(r=>!b.questionIds.includes(r.questionId)))return fail('Each distinct test question needs its own reviewed answer.',409);
+  if(study.completed_at){
+   const previous=(await rows('SELECT answers FROM tests WHERE user_id=? AND milestone=? AND kind=? AND completed_at=?',uid,b.bookNumber,sessionMode==='exam'?'book-exam':'book',study.completed_at))[0];
+   if(previous){const saved=parse(previous.answers)||{},threshold=(await readContent(db())).passBand;return response({band:typeof saved.practiceBand==='number'?saved.practiceBand:null,partScores:saved.partScores||{},criteria:saved.criteria||{},issues:saved.issues||{},durationSeconds:saved.durationSeconds||0,answers:saved.answers||valid.length,passed:!!saved.passed,threshold,label:'AI practice estimate',message:saved.passed?'Practice pass threshold met.':'Review your weaker criteria and try the test again.',bookNumber:b.bookNumber,recovered:true});}
+   return fail('This speaking session was already completed, but its saved final result could not be found. Contact the site owner before repeating the test.',409);
+  }
+  // Valid, unexpired assessment receipts can safely finish after the session timer.
   const bank=await allQuestions();if(![1,2,3].every(p=>b.questionIds.some(id=>bank.find(q=>q.id===id)?.part===p)))return fail('A speaking test must include all three parts.',409);
   const threshold=(await readContent(db())).passBand;
   const result=summarizeSpeakingParts(valid,bank.filter(q=>b.questionIds.includes(q.id)),threshold);
@@ -335,7 +342,7 @@ async function handler(req:Request){
   const mode=b.bookMode||'practice',finishedAt=now();
   const resultRow=JSON.stringify({bookId:book.id,topic:book.topic,practiceBand:result.band,partScores,criteria:result.criteria,issues:result.issues,durationSeconds:result.durationSeconds,answers:valid.length,passed:result.passed,mode});
   const writes=await db().batch([
-   db().prepare('UPDATE study_sessions SET completed_at=? WHERE id=? AND user_id=? AND completed_at IS NULL AND expires_at>?').bind(finishedAt,b.sessionId,uid,finishedAt),
+   db().prepare('UPDATE study_sessions SET completed_at=? WHERE id=? AND user_id=? AND completed_at IS NULL').bind(finishedAt,b.sessionId,uid),
    db().prepare("INSERT INTO tests(id,user_id,milestone,kind,answers,completed_at) SELECT ?,?,?,?,?,? FROM study_sessions WHERE id=? AND user_id=? AND completed_at=?").bind(crypto.randomUUID(),uid,b.bookNumber,mode==='exam'?'book-exam':'book',resultRow,finishedAt,b.sessionId,uid,finishedAt)
   ]);
   if(!writes[0].meta.changes||!writes[1].meta.changes)return fail('This attempt was already completed.',409);
