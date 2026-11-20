@@ -39,16 +39,16 @@ export async function connectionStatus(env:any,db:D1Database){
  if(env.OPENAI_API_KEY)return {configured:true,provider:'openai',model:env.AI_MODEL||null,checkedAt:null,source:'cloudflare_secret'};
  return {configured:false,provider:null,model:null,checkedAt:null,source:'missing',reason:saved?.unavailable||'This Cloudflare environment has no saved Gemini connection or GEMINI_API_KEY Secret. A prior separate deployment does not automatically transfer its encrypted key.'};
 }
-export async function verifyGemini(key:string){
+export async function verifyGemini(key:string,excludeModels:string[]=[]){
  // Listing models validates the API key without consuming generateContent quota.
  // The actual generation check is performed separately by the Admin connection test.
  const res=await fetch('https://generativelanguage.googleapis.com/v1beta/models',{redirect:'manual',headers:{'x-goog-api-key':key},signal:AbortSignal.timeout(20000)});
  if(!res.ok)throw await providerFailure(res,'Gemini');
  const value:any=await res.json();
- const candidates=(value.models||[]).filter((model:any)=>(model.supportedGenerationMethods||[]).includes('generateContent')&&/flash/.test(model.name)&&!/(image|tts|live|embed|thinking|cyber|robot|computer|agent)/.test(model.name));
+ const candidates=(value.models||[]).filter((model:any)=>(model.supportedGenerationMethods||[]).includes('generateContent')&&/flash/.test(model.name)&&!/(image|tts|live|embed|thinking|cyber|robot|computer|agent)/.test(model.name)&&!excludeModels.includes(String(model.name).replace(/^models\//,'')));
  const version=(name:string)=>Number(name.match(/gemini-(\d+(?:\.\d+)?)/)?.[1]||0);
- // Prefer the full Flash model over Flash-Lite at the same generation.
- const rank=(name:string)=>(!/(preview|experimental)/.test(name)?10000:0)+version(name)*100+(/flash-lite/.test(name)?0:25);
+ // Flash-Lite is preferred for fast speaking feedback; stable full Flash is fallback.
+ const rank=(name:string)=>(!/(preview|experimental)/.test(name)?10000:0)+(/flash-lite/.test(name)?1000:0)+version(name)*10;
  candidates.sort((a:any,b:any)=>rank(b.name)-rank(a.name));
  if(!candidates.length)throw new Error('Google accepted the API key, but this project has no available Gemini Flash model with generateContent support. Check Google AI Studio model access and API enablement.');
  return String(candidates[0].name).replace(/^models\//,'');
