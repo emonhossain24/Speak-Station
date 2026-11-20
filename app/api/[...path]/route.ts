@@ -195,8 +195,14 @@ async function handler(req:Request){
   if(!encryptionKey)return fail('Secure credential storage is not configured. Add the Cloudflare Worker Secret CREDENTIAL_ENCRYPTION_KEY (Base64-encoded 32 random bytes), then deploy again.',503);
   try{validateCredentialEncryptionKey(encryptionKey);}catch(error){console.error('[Speak Station credential encryption configuration]',safeError(error));return fail(error instanceof Error?error.message:'CREDENTIAL_ENCRYPTION_KEY is invalid.',503);}
   let body:{key:string};
-  try{body=z.object({key:z.string().trim().min(20).max(300)}).parse(await req.json());}
-  catch(error){if(error instanceof z.ZodError)return fail('The Gemini API key field is missing or invalid. Paste the complete Google AI Studio API key without quotes or extra spaces.',400);return fail('The request body must be valid JSON containing the key field.',400);}
+  try{
+   const payload:any=await req.json();
+   const candidate=payload&&typeof payload==='object'?(payload.key??payload.apiKey??payload.geminiApiKey):null;
+   if(typeof candidate!=='string')return fail('The Gemini API key was not received. Enter the key in the Google AI Studio API key field and submit again.',400);
+   const key=candidate.trim().replace(/^['\"]|['\"]$/g,'').trim();
+   if(key.length<20||key.length>500||/\\s/.test(key))return fail('The Gemini API key format is invalid. Paste the complete key as one continuous string, without spaces or quotation marks.',400);
+   body={key};
+  }catch(error){return fail('The Gemini key request could not be read. Refresh the Admin page and submit the key again.',400);}
   let model:string;
   try{model=await verifyGemini(body.key);}
   catch(error){console.error('[Speak Station Gemini key verification]',safeError(error));return fail(error instanceof ProviderFailure?error.message:(error instanceof Error?error.message:'Gemini could not verify this API key. Check the key and Google AI Studio project.'),error instanceof ProviderFailure?error.httpStatus:400);}
