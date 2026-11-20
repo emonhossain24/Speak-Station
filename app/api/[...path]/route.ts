@@ -171,7 +171,7 @@ async function handler(req:Request){
   }
   const history=await studyHistory(uid),timestamp=now();
   const resumable=history.sessions.find((row:any)=>row.kind===kind&&row.day===day&&row.mode===mode&&!row.completed_at&&row.expires_at>timestamp);
-  if(resumable)return response({sessionId:resumable.id,startedAt:resumable.started_at,expiresAt:resumable.expires_at,resumed:true,scheduling:await studyQuota(uid)});
+  if(resumable)return response({sessionId:resumable.id,startedAt:resumable.started_at,expiresAt:resumable.expires_at,resumed:true,scheduling:admin?{practice:{allowed:true,nextAt:null,reason:'Admin access',recentCount:0,modulesCompleted:0},test:{allowed:true,nextAt:null,reason:'Admin access',recentCount:0,modulesCompleted:0}}:await studyQuota(uid)});
   const check=admin?{allowed:true,nextAt:null,reason:'Admin access',recentCount:0,modulesCompleted:history.modules.length}:eligibility(category,[...history.sessions,...history.legacy],history.modules);
   if(!check.allowed)return response({error:check.reason,nextAt:check.nextAt,modulesCompleted:check.modulesCompleted},429);
   const sessionId=crypto.randomUUID(),expiresAt=new Date(Date.now()+86400000).toISOString();
@@ -189,7 +189,7 @@ async function handler(req:Request){
    [sessionId,uid,category,kind,day,mode,timestamp,expiresAt,uid,cutoff7];
   const admission=await execute(sql,...values);
   if(!admission.meta.changes)return response({error:'Another session just used this time slot. Refresh to see the next available time.',scheduling:await studyQuota(uid)},429);
-  return response({sessionId,startedAt:timestamp,expiresAt,resumed:false,scheduling:await studyQuota(uid)});
+  return response({sessionId,startedAt:timestamp,expiresAt,resumed:false,scheduling:admin?{practice:{allowed:true,nextAt:null,reason:'Admin access',recentCount:0,modulesCompleted:0},test:{allowed:true,nextAt:null,reason:'Admin access',recentCount:0,modulesCompleted:0}}:await studyQuota(uid)});
  }
 
  if(path==='integration'&&req.method==='POST'){
@@ -300,9 +300,11 @@ async function handler(req:Request){
    if(!validAudio(buffer))return fail('One of the uploaded recordings is invalid.',400);
    answers.push({question:expected[index],transcript:item.transcript,audio:buffer,mime,duration:item.duration});
   }
-  const date=now().slice(0,10),limit=Math.max(1,Math.min(100,Number(E().DAILY_AI_LIMIT)||20));
-  const used=await execute('INSERT INTO usage (user_id,date,count) VALUES (?,?,1) ON CONFLICT(user_id,date) DO UPDATE SET count=count+1 WHERE count<?',uid,date,limit);
-  if(!used.meta.changes)return fail('Daily AI assessment limit reached. Try again tomorrow.',429);
+  if(!admin){
+   const date=now().slice(0,10),limit=Math.max(1,Math.min(100,Number(E().DAILY_AI_LIMIT)||20));
+   const used=await execute('INSERT INTO usage (user_id,date,count) VALUES (?,?,1) ON CONFLICT(user_id,date) DO UPDATE SET count=count+1 WHERE count<?',uid,date,limit);
+   if(!used.meta.changes)return fail('Daily AI assessment limit reached. Try again tomorrow.',429);
+  }
   try{
    const checked=await runWithGeminiModelFallback(config,active=>assessSpeakingPart(active,meta.part,answers));const feedback=checked.value;
    const scores=['fluency','lexical','grammar','pronunciation'].map(k=>(feedback.criteria as any)[k].score);
