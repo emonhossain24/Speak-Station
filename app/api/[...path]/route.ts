@@ -36,7 +36,7 @@ async function runWithGeminiModelFallback<T>(config:any,task:(active:any)=>Promi
  try{return {value:await task(config),config,modelRefreshed:false};}
  catch(error){
   if(!(error instanceof ProviderFailure)||![400,403,404].includes(error.httpStatus)||!config.GEMINI_API_KEY)throw error;
-  const model=await verifyGemini(config.GEMINI_API_KEY);
+  const model=await verifyGemini(config.GEMINI_API_KEY,[String(config.AI_MODEL||'')]);
   if(model===config.AI_MODEL)throw error;
   const refreshed={...config,AI_MODEL:model};
   const value=await task(refreshed);
