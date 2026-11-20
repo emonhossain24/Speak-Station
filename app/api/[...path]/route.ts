@@ -328,7 +328,7 @@ async function handler(req:Request){
   if(new Set(b.questionIds).size!==b.questionIds.length||new Set(valid.map(r=>r.questionId)).size!==b.questionIds.length||valid.length!==b.questionIds.length||valid.some(r=>!b.questionIds.includes(r.questionId)))return fail('Each distinct test question needs its own reviewed answer.',409);
   if(study.completed_at){
    const previous=(await rows('SELECT answers FROM tests WHERE user_id=? AND milestone=? AND kind=? AND completed_at=?',uid,b.bookNumber,sessionMode==='exam'?'book-exam':'book',study.completed_at))[0];
-   if(previous){const saved=parse(previous.answers)||{},threshold=(await readContent(db())).passBand;return response({band:typeof saved.practiceBand==='number'?saved.practiceBand:null,partScores:saved.partScores||{},criteria:saved.criteria||{},issues:saved.issues||{},durationSeconds:saved.durationSeconds||0,answers:saved.answers||valid.length,passed:!!saved.passed,threshold,label:'AI practice estimate',message:saved.passed?'Practice pass threshold met.':'Review your weaker criteria and try the test again.',bookNumber:b.bookNumber,recovered:true});}
+   if(previous){const saved=parse(previous.answers)||{},threshold=(await readContent(db())).passBand;return response({band:typeof saved.practiceBand==='number'?saved.practiceBand:null,partScores:saved.partScores||{},criteria:saved.criteria||{},issues:saved.issues||{},durationSeconds:saved.durationSeconds||0,answers:saved.answers||valid.length,passed:!!saved.passed,threshold,label:'AI practice estimate',message:saved.passed?'Practice pass threshold met.':'Review your weaker criteria and try the test again.',bookNumber:b.bookNumber,latestBand:typeof saved.practiceBand==='number'?saved.practiceBand:null,bestBand:typeof saved.bestBand==='number'?saved.bestBand:(typeof saved.practiceBand==='number'?saved.practiceBand:null),previousBestBand:typeof saved.previousBestBand==='number'?saved.previousBestBand:null,recovered:true});}
    return fail('This speaking session was already completed, but its saved final result could not be found. Contact the site owner before repeating the test.',409);
   }
   // Valid, unexpired assessment receipts can safely finish after the session timer.
@@ -336,17 +336,21 @@ async function handler(req:Request){
   const threshold=(await readContent(db())).passBand;
   const result=summarizeSpeakingParts(valid,bank.filter(q=>b.questionIds.includes(q.id)),threshold);
   if(!b.bookNumber)return response(result);
+  const previousRows=await rows('SELECT answers FROM tests WHERE user_id=? AND milestone=? AND kind=?',uid,b.bookNumber,sessionMode==='exam'?'book-exam':'book');
+  const previousBands=previousRows.map((row:any)=>parse(row.answers)?.practiceBand).filter((value:any)=>typeof value==='number'&&Number.isFinite(value)&&value>=0&&value<=9) as number[];
+  const previousBestBand=previousBands.length?Math.max(...previousBands):null;
+  const lifetimeBestBand=result.band===null?previousBestBand:Math.max(previousBestBand??0,result.band);
   const book=buildSpeakingBooks(bank,240)[b.bookNumber-1];
   if(!book||book.questions.length!==b.questionIds.length||book.questions.some((q,i)=>q.id!==b.questionIds[i]))return fail('This speaking book has changed. Restart with the current question collection.',409);
   const partScores=result.partScores;
   const mode=b.bookMode||'practice',finishedAt=now();
-  const resultRow=JSON.stringify({bookId:book.id,topic:book.topic,practiceBand:result.band,partScores,criteria:result.criteria,issues:result.issues,durationSeconds:result.durationSeconds,answers:valid.length,passed:result.passed,mode});
+  const resultRow=JSON.stringify({bookId:book.id,topic:book.topic,practiceBand:result.band,bestBand:lifetimeBestBand,previousBestBand,partScores,criteria:result.criteria,issues:result.issues,durationSeconds:result.durationSeconds,answers:valid.length,passed:result.passed,mode});
   const writes=await db().batch([
    db().prepare('UPDATE study_sessions SET completed_at=? WHERE id=? AND user_id=? AND completed_at IS NULL').bind(finishedAt,b.sessionId,uid),
    db().prepare("INSERT INTO tests(id,user_id,milestone,kind,answers,completed_at) SELECT ?,?,?,?,?,? FROM study_sessions WHERE id=? AND user_id=? AND completed_at=?").bind(crypto.randomUUID(),uid,b.bookNumber,mode==='exam'?'book-exam':'book',resultRow,finishedAt,b.sessionId,uid,finishedAt)
   ]);
   if(!writes[0].meta.changes||!writes[1].meta.changes)return fail('This attempt was already completed.',409);
-  return response({...result,partScores,bookNumber:b.bookNumber});
+  return response({...result,partScores,bookNumber:b.bookNumber,latestBand:result.band,bestBand:lifetimeBestBand,previousBestBand,improved:result.band!==null&&(previousBestBand===null||result.band>previousBestBand)});
  }
  if(req.method==='POST'&&path==='complete-stage'){
   const body=z.object({receipts:z.array(z.string().max(4000)).min(1).max(30),sessionId:z.string().uuid()}).parse(await req.json());
