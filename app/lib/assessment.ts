@@ -17,7 +17,7 @@ export async function assess(env:any,q:Question,transcript:string,audio:ArrayBuf
  if(provider==='gemini'){
   if(!env.GEMINI_API_KEY)throw new Error('AI_NOT_CONFIGURED');
   let binary='';if(audio){const bytes=new Uint8Array(audio);for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));}
-  const endpoint=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(env.AI_MODEL||'gemini-3.8-flash')}:generateContent`;
+  const endpoint=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(env.AI_MODEL||'gemini-3.5-flash-lite')}:generateContent`;
   const payload:any={systemInstruction:{parts:[{text:system}]},contents:[{role:'user',parts:[{text:prompt+(audio?'':'\nTranscript-only practice. No audio evidence: do not assess pronunciation or acoustic fluency.')},...(audio?[{inlineData:{mimeType:mime.split(';')[0],data:btoa(binary)}}]:[])]}],generationConfig:{responseMimeType:'application/json',temperature:0.2,maxOutputTokens:10000}};
   const send=()=>fetch(endpoint,{method:'POST',redirect:'manual',headers:{'Content-Type':'application/json','x-goog-api-key':env.GEMINI_API_KEY},body:JSON.stringify(payload),signal:AbortSignal.timeout(90000)});
   let res=await fetchWithProviderRetry(send,2);
