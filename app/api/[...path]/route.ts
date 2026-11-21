@@ -212,7 +212,7 @@ async function handler(req:Request){
    if(key.length<20||key.length>500||/\\s/.test(key))return fail('The Gemini API key format is invalid. Paste the complete key as one continuous string, without spaces or quotation marks.',400);
    body={key};
   }catch(error){return fail('The Gemini key request could not be read. Refresh the Admin page and submit the key again.',400);}
-  let models:string[],model:string;
+  let models:string[]=[];let model:string;
   try{models=await listGeminiModels(body.key);model=models[0];}
   catch(error){console.error('[Speak Station Gemini key verification]',safeError(error));return fail(error instanceof ProviderFailure?error.message:(error instanceof Error?error.message:'Gemini could not verify this API key. Check the key and Google AI Studio project.'),error instanceof ProviderFailure?error.httpStatus:400);}
   let encrypted:string;
@@ -230,7 +230,7 @@ async function handler(req:Request){
   const config=await aiConfiguration(E(),db());
   if(!config.GEMINI_API_KEY)return fail('Save a Gemini API key before refreshing models.',409);
   try{
-   const models=await listGeminiModels(config.GEMINI_API_KEY);
+   const models:string[]=await listGeminiModels(config.GEMINI_API_KEY);
    const storedRows=await rows("SELECT value FROM settings WHERE key='gemini_connection'");
    let selectedModel=models[0];
    if(storedRows[0]){
@@ -252,7 +252,7 @@ async function handler(req:Request){
   if(!storedRows[0])return fail('Save a Gemini API key before selecting a model.',409);
   const stored=parse(storedRows[0].value);
   if(!stored?.encrypted)return fail('The saved Gemini credential is unavailable.',409);
-  const models=await listGeminiModels(await (async()=>{const config=await aiConfiguration(E(),db());return config.GEMINI_API_KEY||''})());
+  const models:string[]=await listGeminiModels(await (async()=>{const config=await aiConfiguration(E(),db());return config.GEMINI_API_KEY||''})());
   if(!models.includes(b.model))return fail('That model is not available to the saved API key. Refresh the model list and choose an available model.',400);
   stored.model=b.model;stored.models=models;stored.fallbackModels=models.filter((item:string)=>item!==b.model);stored.checkedAt=now();
   await execute("UPDATE settings SET value=? WHERE key='gemini_connection'",JSON.stringify(stored));
