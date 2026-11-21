@@ -33,7 +33,7 @@ const parse=(s:any,fallback:any=null)=>{try{return JSON.parse(s)}catch{return fa
 async function rows(sql:string,...args:any[]){return (await db().prepare(sql).bind(...args).all()).results as any[];}
 async function execute(sql:string,...args:any[]){return db().prepare(sql).bind(...args).run();}
 async function runWithGeminiModelFallback<T>(config:any,task:(active:any)=>Promise<T>):Promise<{value:T;config:any;modelRefreshed:boolean}>{
- const candidates=[String(config.AI_MODEL||''),...(Array.isArray(config.AI_FALLBACK_MODELS)?config.AI_FALLBACK_MODELS:[])].filter((model,index,array)=>model&&array.indexOf(model)===index);
+ const candidates=[String(config.AI_MODEL||'gemini-3.5-flash-lite'),...(Array.isArray(config.AI_FALLBACK_MODELS)?config.AI_FALLBACK_MODELS:[])].filter((model,index,array)=>model&&array.indexOf(model)===index);
  let lastError:unknown;
  for(let index=0;index<candidates.length;index++){
   const model=candidates[index],active={...config,AI_MODEL:model};
