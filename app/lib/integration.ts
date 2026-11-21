@@ -47,7 +47,7 @@ export async function listGeminiModels(key:string):Promise<string[]>{
  const version=(name:string)=>Number(name.match(/gemini-(\d+(?:\.\d+)?)/)?.[1]||0);
  const rank=(name:string)=>(!/(preview|experimental)/.test(name)?100000:0)+(/flash-lite/.test(name)?3000:/flash/.test(name)?2000:/pro/.test(name)?1000:0)+version(name)*10;
  candidates.sort((a:any,b:any)=>rank(b.name)-rank(a.name));
- const models=[...new Set(candidates.map((model:any)=>String(model.name).replace(/^models\//,'')))];
+ const models:string[]=[...new Set<string>(candidates.map((model:any):string=>String(model.name).replace(/^models\//,'')))];
  if(!models.length)throw new Error('Google accepted the API key, but this project has no available Gemini text-generation model with generateContent support. Check Google AI Studio model access and API enablement.');
  return models;
 }
