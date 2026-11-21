@@ -60,7 +60,7 @@ export default function AdminConsole({content,revision,bank,api,onSaved}:{conten
     try{
      const current=await api('state');
      const announcement=current.announcement;
-     if(announcement?.active&&/speaking assessment.*transcript.*not working|transcript.*speaking assessment.*not working/i.test(String(announcement.message||''))){
+     if(announcement?.active&&/speaking assessment.*transcript.*not working|transcript.*speaking assessment.*not working|AI speaking assessment is temporarily unavailable/i.test(String(announcement.message||''))){
       await api('admin/announcement',{message:announcement.message,active:false});
       results.push({name:'Maintenance announcement',status:'pass',detail:'The outdated AI maintenance notice was disabled after all live AI checks passed.'});
      }
