@@ -15,7 +15,7 @@ import {assessSpeakingPart,type PartAnswer} from '../../lib/part-assessment';
 import {transcribeAudio,validAudio,audioMime} from '../../lib/transcription';
 import {z} from 'zod';
 import {assessmentFailureMessage,ProviderFailure} from '../../lib/provider-errors';
-import {aiConfiguration,connectionStatus,encryptCredential,verifyGemini,validateCredentialEncryptionKey} from '../../lib/integration';
+import {aiConfiguration,connectionStatus,encryptCredential,verifyGemini,listGeminiModels,validateCredentialEncryptionKey} from '../../lib/integration';
 export const dynamic='force-dynamic';
 const E=()=>env as any;
 const receiptSecret=()=>String(E().PRACTICE_RECEIPT_SECRET||E().CREDENTIAL_ENCRYPTION_KEY||'');
@@ -33,19 +33,25 @@ const parse=(s:any,fallback:any=null)=>{try{return JSON.parse(s)}catch{return fa
 async function rows(sql:string,...args:any[]){return (await db().prepare(sql).bind(...args).all()).results as any[];}
 async function execute(sql:string,...args:any[]){return db().prepare(sql).bind(...args).run();}
 async function runWithGeminiModelFallback<T>(config:any,task:(active:any)=>Promise<T>):Promise<{value:T;config:any;modelRefreshed:boolean}>{
- try{return {value:await task(config),config,modelRefreshed:false};}
- catch(error){
-  if(!(error instanceof ProviderFailure)||![400,403,404].includes(error.httpStatus)||!config.GEMINI_API_KEY)throw error;
-  const model=await verifyGemini(config.GEMINI_API_KEY,[String(config.AI_MODEL||'')]);
-  if(model===config.AI_MODEL)throw error;
-  const refreshed={...config,AI_MODEL:model};
-  const value=await task(refreshed);
+ const candidates=[String(config.AI_MODEL||''),...(Array.isArray(config.AI_FALLBACK_MODELS)?config.AI_FALLBACK_MODELS:[])].filter((model,index,array)=>model&&array.indexOf(model)===index);
+ let lastError:unknown;
+ for(let index=0;index<candidates.length;index++){
+  const model=candidates[index],active={...config,AI_MODEL:model};
   try{
-   const storedRows=await rows("SELECT value FROM settings WHERE key='gemini_connection'");
-   if(storedRows[0]){const stored=JSON.parse(storedRows[0].value);stored.model=model;stored.checkedAt=now();await execute("UPDATE settings SET value=? WHERE key='gemini_connection'",JSON.stringify(stored));}
-  }catch(saveError){console.error('[Speak Station model refresh persistence failed]',safeError(saveError));}
-  return {value,config:refreshed,modelRefreshed:true};
+   const value=await task(active);
+   if(index>0){
+    try{
+     const storedRows=await rows("SELECT value FROM settings WHERE key='gemini_connection'");
+     if(storedRows[0]){const stored=JSON.parse(storedRows[0].value);stored.model=model;stored.fallbackModels=candidates.filter(item=>item!==model);stored.checkedAt=now();await execute("UPDATE settings SET value=? WHERE key='gemini_connection'",JSON.stringify(stored));}
+    }catch(saveError){console.error('[Speak Station model fallback persistence failed]',safeError(saveError));}
+   }
+   return {value,config:active,modelRefreshed:index>0};
+  }catch(error){
+   lastError=error;
+   if(!(error instanceof ProviderFailure)||![400,403,404,429,500,502,503,504].includes(error.httpStatus)||index===candidates.length-1)throw error;
+  }
  }
+ throw lastError instanceof Error?lastError:new Error('No compatible Gemini model is available.');
 }
 async function allQuestions(){const changes=await rows('SELECT * FROM question_overrides');const map=new Map(questions.map(q=>[q.id,q]));for(const c of changes){if(c.archived)map.delete(c.id);else map.set(c.id,parse(c.data));}return [...map.values()];}
 
@@ -206,18 +212,32 @@ async function handler(req:Request){
    if(key.length<20||key.length>500||/\\s/.test(key))return fail('The Gemini API key format is invalid. Paste the complete key as one continuous string, without spaces or quotation marks.',400);
    body={key};
   }catch(error){return fail('The Gemini key request could not be read. Refresh the Admin page and submit the key again.',400);}
-  let model:string;
-  try{model=await verifyGemini(body.key);}
+  let models:string[],model:string;
+  try{models=await listGeminiModels(body.key);model=models[0];}
   catch(error){console.error('[Speak Station Gemini key verification]',safeError(error));return fail(error instanceof ProviderFailure?error.message:(error instanceof Error?error.message:'Gemini could not verify this API key. Check the key and Google AI Studio project.'),error instanceof ProviderFailure?error.httpStatus:400);}
   let encrypted:string;
   try{encrypted=await encryptCredential(body.key,encryptionKey);}
   catch(error){console.error('[Speak Station Gemini encryption]',safeError(error));return fail('Gemini key was verified, but encryption failed. Check CREDENTIAL_ENCRYPTION_KEY: it must be Base64-encoded 32 random bytes.',503);}
   const checkedAt=now();
-  try{await execute("INSERT INTO settings (key,value) VALUES ('gemini_connection',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",JSON.stringify({encrypted,model,checkedAt}));}
+  try{await execute("INSERT INTO settings (key,value) VALUES ('gemini_connection',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",JSON.stringify({encrypted,model,models,fallbackModels:models.filter(item=>item!==model),checkedAt}));}
   catch(error){console.error('[Speak Station Gemini D1 save]',safeError(error));return fail('Gemini key was verified and encrypted, but Cloudflare D1 could not save it. Check the production D1 binding and settings table migration.',503);}
   try{await execute('INSERT INTO audit VALUES (?,?,?,?,?)',crypto.randomUUID(),uid,'integration.connected','Gemini connection verified; key stored encrypted',now());}
   catch(error){console.error('[Speak Station Gemini audit write]',safeError(error));}
-  return response({ok:true,model,checkedAt});
+  return response({ok:true,model,models,checkedAt});
+ }
+ if(path==='integration/model'&&req.method==='POST'){
+  if(!admin)return fail('Only the site owner can change the AI model.',403);
+  const b=z.object({model:z.string().min(3).max(120)}).parse(body);
+  const storedRows=await rows("SELECT value FROM settings WHERE key='gemini_connection'");
+  if(!storedRows[0])return fail('Save a Gemini API key before selecting a model.',409);
+  const stored=parse(storedRows[0].value);
+  if(!stored?.encrypted)return fail('The saved Gemini credential is unavailable.',409);
+  const models=await listGeminiModels(await (async()=>{const config=await aiConfiguration(E(),db());return config.GEMINI_API_KEY||''})());
+  if(!models.includes(b.model))return fail('That model is not available to the saved API key. Refresh the model list and choose an available model.',400);
+  stored.model=b.model;stored.models=models;stored.fallbackModels=models.filter((item:string)=>item!==b.model);stored.checkedAt=now();
+  await execute("UPDATE settings SET value=? WHERE key='gemini_connection'",JSON.stringify(stored));
+  await audit('integration.model.changed',b.model);
+  return response({ok:true,model:b.model,models,fallbackModels:stored.fallbackModels});
  }
  if(path==='integration/test'&&req.method==='POST'){
   if(!admin)return fail('Only the site owner can run a connection test.',403);
