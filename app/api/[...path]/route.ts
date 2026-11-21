@@ -232,15 +232,17 @@ async function handler(req:Request){
   try{
    const models=await listGeminiModels(config.GEMINI_API_KEY);
    const storedRows=await rows("SELECT value FROM settings WHERE key='gemini_connection'");
+   let selectedModel=models[0];
    if(storedRows[0]){
     const stored=parse(storedRows[0].value)||{};
     stored.models=models;
     if(!models.includes(String(stored.model||'')))stored.model=models[0];
     stored.fallbackModels=models.filter((item:string)=>item!==stored.model);
     stored.checkedAt=now();
+    selectedModel=stored.model;
     await execute("UPDATE settings SET value=? WHERE key='gemini_connection'",JSON.stringify(stored));
    }
-   return response({ok:true,models,model:models[0]});
+   return response({ok:true,models,model:selectedModel});
   }catch(error){console.error('[Speak Station Gemini model refresh]',safeError(error));return fail(error instanceof Error?error.message:'Unable to refresh Gemini models.',error instanceof ProviderFailure?error.httpStatus:502);}
  }
  if(path==='integration/model'&&req.method==='POST'){
