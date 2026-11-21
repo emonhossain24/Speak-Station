@@ -44,10 +44,10 @@ export async function listGeminiModels(key:string){
  if(!res.ok)throw await providerFailure(res,'Gemini');
  const value:any=await res.json();
  const candidates=(value.models||[]).filter((model:any)=>(model.supportedGenerationMethods||[]).includes('generateContent')&&/flash/.test(model.name)&&!/(image|tts|live|embed|thinking|cyber|robot|computer|agent)/.test(model.name));
- const version=(name:string)=>Number(name.match(/gemini-(\\d+(?:\\.\\d+)?)/)?.[1]||0);
+ const version=(name:string)=>Number(name.match(/gemini-(\d+(?:\\.\d+)?)/)?.[1]||0);
  const rank=(name:string)=>(!/(preview|experimental)/.test(name)?10000:0)+(/flash-lite/.test(name)?1000:0)+version(name)*10;
  candidates.sort((a:any,b:any)=>rank(b.name)-rank(a.name));
- const models=[...new Set(candidates.map((model:any)=>String(model.name).replace(/^models\\//,'')))];
+ const models=[...new Set(candidates.map((model:any)=>String(model.name).replace(/^models\//,'')))];
  if(!models.length)throw new Error('Google accepted the API key, but this project has no available Gemini Flash model with generateContent support. Check Google AI Studio model access and API enablement.');
  return models;
 }
