@@ -48,6 +48,13 @@ export default function AdminConsole({content,revision,bank,api,onSaved}:{conten
     }catch(e){results.push({name,status:'fail',detail:(e as Error).message})}
    }
    results.push({name:'Real device microphone capture',status:'manual',detail:'Use the separate microphone button below and speak during the recording.'});
+   const assessmentFailed=results.some(v=>v.status==='fail'&&(/Real AI feedback generation|Real AI speaking Part [123] audio assessment/.test(v.name)));
+   if(assessmentFailed){
+    try{
+     await api('admin/announcement',{message:'AI speaking assessment is temporarily unavailable. We are working to restore the service as soon as possible.',active:true});
+     results.push({name:'Assessment status announcement',status:'pass',detail:'The current AI assessment outage notice was published on the homepage.'});
+    }catch(error){results.push({name:'Assessment status announcement',status:'manual',detail:'Could not publish the homepage notice automatically: '+(error as Error).message});}
+   }
    const providerChecksPassed=results.every(v=>v.status!=='fail');
    if(providerChecksPassed){
     try{
