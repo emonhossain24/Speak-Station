@@ -227,7 +227,7 @@ async function handler(req:Request){
  }
  if(path==='integration/model'&&req.method==='POST'){
   if(!admin)return fail('Only the site owner can change the AI model.',403);
-  const b=z.object({model:z.string().min(3).max(120)}).parse(body);
+  let b:{model:string};try{b=z.object({model:z.string().min(3).max(120)}).parse(await req.json())}catch{return fail('Choose a valid available Gemini model.',400)}
   const storedRows=await rows("SELECT value FROM settings WHERE key='gemini_connection'");
   if(!storedRows[0])return fail('Save a Gemini API key before selecting a model.',409);
   const stored=parse(storedRows[0].value);
@@ -236,7 +236,6 @@ async function handler(req:Request){
   if(!models.includes(b.model))return fail('That model is not available to the saved API key. Refresh the model list and choose an available model.',400);
   stored.model=b.model;stored.models=models;stored.fallbackModels=models.filter((item:string)=>item!==b.model);stored.checkedAt=now();
   await execute("UPDATE settings SET value=? WHERE key='gemini_connection'",JSON.stringify(stored));
-  await audit('integration.model.changed',b.model);
   return response({ok:true,model:b.model,models,fallbackModels:stored.fallbackModels});
  }
  if(path==='integration/test'&&req.method==='POST'){
