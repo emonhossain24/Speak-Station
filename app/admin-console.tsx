@@ -3,7 +3,7 @@ import {useEffect,useState} from 'react';
 import QuestionManager from './question-manager';
 import {defaultContent,type SiteContent} from './lib/content';
 export default function AdminConsole({content,revision,bank,api,onSaved}:{content:SiteContent;revision:number;bank:any[];api:(p:string,b?:any)=>Promise<any>;onSaved:()=>Promise<void>}){
- const [managedTopic,setManagedTopic]=useState('all'),[startWithAdd,setStartWithAdd]=useState(false),[aiKey,setAiKey]=useState(''),[aiConnectionMessage,setAiConnectionMessage]=useState(''),[aiConnectionBusy,setAiConnectionBusy]=useState(false);
+ const [managedTopic,setManagedTopic]=useState('all'),[startWithAdd,setStartWithAdd]=useState(false),[aiKey,setAiKey]=useState(''),[availableModels,setAvailableModels]=useState<string[]>([]),[selectedModel,setSelectedModel]=useState(''),[aiTestResult,setAiTestResult]=useState<any>(null),[showAiTestResult,setShowAiTestResult]=useState(false),[aiConnectionMessage,setAiConnectionMessage]=useState(''),[aiConnectionBusy,setAiConnectionBusy]=useState(false);
  const [learnerDetails,setLearnerDetails]=useState<any>(null);
  const [liveChecks,setLiveChecks]=useState<{name:string;status:'pass'|'fail'|'manual';detail:string}[]>([]);
  const [liveCheckedAt,setLiveCheckedAt]=useState('');
