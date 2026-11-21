@@ -15,7 +15,7 @@ import {assessSpeakingPart,type PartAnswer} from '../../lib/part-assessment';
 import {transcribeAudio,validAudio,audioMime} from '../../lib/transcription';
 import {z} from 'zod';
 import {assessmentFailureMessage,ProviderFailure} from '../../lib/provider-errors';
-import {aiConfiguration,connectionStatus,encryptCredential,verifyGemini,listGeminiModels,validateCredentialEncryptionKey} from '../../lib/integration';
+import {aiConfiguration,connectionStatus,encryptCredential,listGeminiModels,validateCredentialEncryptionKey} from '../../lib/integration';
 export const dynamic='force-dynamic';
 const E=()=>env as any;
 const receiptSecret=()=>String(E().PRACTICE_RECEIPT_SECRET||E().CREDENTIAL_ENCRYPTION_KEY||'');
