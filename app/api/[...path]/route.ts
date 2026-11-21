@@ -225,6 +225,24 @@ async function handler(req:Request){
   catch(error){console.error('[Speak Station Gemini audit write]',safeError(error));}
   return response({ok:true,model,models,checkedAt});
  }
+ if(path==='integration/models'&&req.method==='POST'){
+  if(!admin)return fail('Only the site owner can refresh AI models.',403);
+  const config=await aiConfiguration(E(),db());
+  if(!config.GEMINI_API_KEY)return fail('Save a Gemini API key before refreshing models.',409);
+  try{
+   const models=await listGeminiModels(config.GEMINI_API_KEY);
+   const storedRows=await rows("SELECT value FROM settings WHERE key='gemini_connection'");
+   if(storedRows[0]){
+    const stored=parse(storedRows[0].value)||{};
+    stored.models=models;
+    if(!models.includes(String(stored.model||'')))stored.model=models[0];
+    stored.fallbackModels=models.filter((item:string)=>item!==stored.model);
+    stored.checkedAt=now();
+    await execute("UPDATE settings SET value=? WHERE key='gemini_connection'",JSON.stringify(stored));
+   }
+   return response({ok:true,models,model:models[0]});
+  }catch(error){console.error('[Speak Station Gemini model refresh]',safeError(error));return fail(error instanceof Error?error.message:'Unable to refresh Gemini models.',error instanceof ProviderFailure?error.httpStatus:502);}
+ }
  if(path==='integration/model'&&req.method==='POST'){
   if(!admin)return fail('Only the site owner can change the AI model.',403);
   let b:{model:string};try{b=z.object({model:z.string().min(3).max(120)}).parse(await req.json())}catch{return fail('Choose a valid available Gemini model.',400)}
