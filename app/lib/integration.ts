@@ -39,7 +39,7 @@ export async function connectionStatus(env:any,db:D1Database){
  if(env.OPENAI_API_KEY)return {configured:true,provider:'openai',model:env.AI_MODEL||null,checkedAt:null,source:'cloudflare_secret'};
  return {configured:false,provider:null,model:null,checkedAt:null,source:'missing',reason:saved?.unavailable||'This Cloudflare environment has no saved Gemini connection or GEMINI_API_KEY Secret. A prior separate deployment does not automatically transfer its encrypted key.'};
 }
-export async function listGeminiModels(key:string){
+export async function listGeminiModels(key:string):Promise<string[]>{
  const res=await fetch('https://generativelanguage.googleapis.com/v1beta/models',{redirect:'manual',headers:{'x-goog-api-key':key},signal:AbortSignal.timeout(20000)});
  if(!res.ok)throw await providerFailure(res,'Gemini');
  const value:any=await res.json();
